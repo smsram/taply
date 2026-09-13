@@ -81,7 +81,7 @@ class ToolsScreen extends StatelessWidget {
       icon: Icons.zoom_in_rounded,
       iconColor: Color(0xFFEC4899),
       category: ToolCategory.visionAndSensors,
-      isImplementedInPhase1: false,
+      isImplementedInPhase1: true,
       routePath: '/tools/magnifier',
     ),
     ToolItem(
@@ -91,7 +91,7 @@ class ToolsScreen extends StatelessWidget {
       icon: Icons.explore_rounded,
       iconColor: Color(0xFF06B6D4),
       category: ToolCategory.visionAndSensors,
-      isImplementedInPhase1: false,
+      isImplementedInPhase1: true,
       routePath: '/tools/compass',
     ),
 
@@ -182,15 +182,7 @@ class ToolsScreen extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: () {
-          if (tool.isImplementedInPhase1) {
-            context.push(tool.routePath);
-          } else {
-            context.showSnackBar(
-              '${tool.name} hardware camera/sensor API activates in Phase 2',
-            );
-          }
-        },
+        onTap: () => context.push(tool.routePath),
         borderRadius: AppSpacing.borderRadiusMd,
         child: Container(
           padding: const EdgeInsets.all(AppSpacing.md),
@@ -232,19 +224,19 @@ class ToolsScreen extends StatelessWidget {
                           const SizedBox(width: 4),
                           Container(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 4,
-                              vertical: 1,
+                              horizontal: 5,
+                              vertical: 1.5,
                             ),
                             decoration: BoxDecoration(
-                              color: AppColors.accent.withOpacity(0.15),
+                              color: AppColors.secondary.withOpacity(0.15),
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: const Text(
-                              'P2',
+                              'Sensor',
                               style: TextStyle(
                                 fontSize: 9,
                                 fontWeight: FontWeight.w700,
-                                color: AppColors.accent,
+                                color: AppColors.secondary,
                               ),
                             ),
                           ),

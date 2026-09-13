@@ -152,4 +152,26 @@ class GestureBinding {
       customPayload: customPayload ?? this.customPayload,
     );
   }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'trigger': trigger.name,
+      'target': target.name,
+      'customPayload': customPayload,
+    };
+  }
+
+  factory GestureBinding.fromMap(Map<String, dynamic> map) {
+    return GestureBinding(
+      trigger: GestureTrigger.values.firstWhere(
+        (e) => e.name == map['trigger'],
+        orElse: () => GestureTrigger.singleTap,
+      ),
+      target: GestureActionTarget.values.firstWhere(
+        (e) => e.name == map['target'],
+        orElse: () => GestureActionTarget.openPanel,
+      ),
+      customPayload: map['customPayload'] as String?,
+    );
+  }
 }

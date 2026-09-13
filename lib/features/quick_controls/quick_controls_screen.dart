@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/services/native_bridge.dart';
 import '../../core/services/providers.dart';
 import '../../core/services/system_action_service.dart';
 import '../../core/theme/app_colors.dart';
@@ -23,31 +25,68 @@ class _QuickControlsScreenState extends ConsumerState<QuickControlsScreen> {
   // Volume state
   double _mediaVolume = 0.7;
   double _ringVolume = 0.8;
-  double _alarmVolume = 0.9;
-  bool _isMuted = false;
-  bool _isVibrate = false;
+  double _alarmVolume = 0.8;
   String _soundMode = 'Normal';
 
   // Display state
   double _brightness = 0.65;
   bool _autoBrightness = true;
 
-  // Connectivity states
-  final Map<String, bool> _connectivityToggles = {
-    'Wi-Fi': true,
-    'Bluetooth': true,
-    'Mobile Data': true,
-    'Hotspot': false,
-    'Airplane Mode': false,
-    'NFC': true,
-    'Cast': false,
-    'Location': true,
-    'VPN': false,
-  };
+  // Flashlight & Connectivity states
+  bool _isTorchOn = false;
+  bool _isPlayingMedia = false;
 
-  void _triggerAction(SystemActionType type, String name) {
-    ref.read(systemActionServiceProvider).executeAction(type);
-    context.showSnackBar('$name action queued (Phase 2 Native Service)');
+  @override
+  void initState() {
+    super.initState();
+    _fetchLiveDeviceState();
+  }
+
+  Future<void> _fetchLiveDeviceState() async {
+    final vol = await NativeBridge.instance.getVolumeLevels();
+    final bri = await NativeBridge.instance.getBrightness();
+    final torch = await NativeBridge.instance.isFlashlightOn();
+    final media = await NativeBridge.instance.getMediaStatus();
+
+    if (mounted) {
+      setState(() {
+        _mediaVolume = (vol['mediaVolume'] as num?)?.toDouble() ?? 0.7;
+        _ringVolume = (vol['ringVolume'] as num?)?.toDouble() ?? 0.8;
+        _alarmVolume = (vol['alarmVolume'] as num?)?.toDouble() ?? 0.8;
+        _soundMode = vol['ringerMode']?.toString() ?? 'Normal';
+        _brightness = bri.clamp(0.05, 1.0);
+        _isTorchOn = torch;
+        _isPlayingMedia = media['isPlaying'] as bool? ?? false;
+      });
+    }
+  }
+
+  void _triggerHaptic() {
+    final settings = ref.read(settingsProvider);
+    if (settings.hapticFeedback) {
+      HapticFeedback.lightImpact();
+    }
+  }
+
+  Future<void> _triggerAction(SystemActionType type, String name) async {
+    _triggerHaptic();
+    final service = ref.read(systemActionServiceProvider);
+    await service.executeAction(type);
+    if (mounted) {
+      context.showSnackBar(name);
+    }
+  }
+
+  Future<void> _toggleFlashlight() async {
+    _triggerHaptic();
+    final ok = await NativeBridge.instance.toggleFlashlight();
+    if (!mounted) return;
+    if (ok) {
+      setState(() => _isTorchOn = !_isTorchOn);
+      context.showSnackBar(
+        _isTorchOn ? 'Flashlight enabled' : 'Flashlight turned off',
+      );
+    }
   }
 
   @override
@@ -57,58 +96,9 @@ class _QuickControlsScreenState extends ConsumerState<QuickControlsScreen> {
       body: ListView(
         padding: const EdgeInsets.only(bottom: AppSpacing.xxl),
         children: [
-          // Informational Banner
-          Container(
-            margin: const EdgeInsets.all(AppSpacing.base),
-            padding: const EdgeInsets.all(AppSpacing.md),
-            decoration: BoxDecoration(
-              color: context.isDarkMode
-                  ? AppColors.darkElevatedSurface
-                  : const Color(0xFFEFF6FF),
-              borderRadius: AppSpacing.borderRadiusMd,
-              border: Border.all(
-                color: context.isDarkMode
-                    ? AppColors.darkBorder
-                    : AppColors.primary.withOpacity(0.25),
-              ),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Icon(
-                  Icons.info_outline_rounded,
-                  size: 20,
-                  color: AppColors.primary,
-                ),
-                const SizedBox(width: AppSpacing.md),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Clean Control Architecture',
-                        style: context.textTheme.labelMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: context.isDarkMode
-                              ? AppColors.darkPrimaryText
-                              : AppColors.primaryDark,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'System toggles and audio controls below are wired to the dispatch service layer. Native hardware toggles will execute in Phase 2.',
-                        style: context.textTheme.bodySmall?.copyWith(
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
+          const SizedBox(height: AppSpacing.sm),
 
-          // 1. SYSTEM
+          // 1. SYSTEM ACTIONS (Highest Priority)
           AppSection(
             title: 'System Actions',
             subtitle: 'Core navigation and device management gestures',
@@ -124,44 +114,50 @@ class _QuickControlsScreenState extends ConsumerState<QuickControlsScreen> {
                   ActionTile(
                     title: 'Home',
                     icon: Icons.home_rounded,
-                    onTap: () => _triggerAction(SystemActionType.home, 'Home'),
+                    onTap: () =>
+                        _triggerAction(SystemActionType.home, 'Home pressed'),
                   ),
                   ActionTile(
                     title: 'Back',
                     icon: Icons.arrow_back_rounded,
-                    onTap: () => _triggerAction(SystemActionType.back, 'Back'),
+                    onTap: () =>
+                        _triggerAction(SystemActionType.back, 'Back pressed'),
                   ),
                   ActionTile(
                     title: 'Recent Apps',
                     icon: Icons.view_carousel_rounded,
                     onTap: () => _triggerAction(
                       SystemActionType.recentApps,
-                      'Recent Apps',
-                    ),
-                  ),
-                  ActionTile(
-                    title: 'Lock Screen',
-                    icon: Icons.lock_outline_rounded,
-                    onTap: () => _triggerAction(
-                      SystemActionType.lockScreen,
-                      'Lock Screen',
+                      'Recent apps opened',
                     ),
                   ),
                   ActionTile(
                     title: 'Screenshot',
                     icon: Icons.screenshot_rounded,
+                    iconColor: AppColors.secondary,
                     onTap: () => _triggerAction(
                       SystemActionType.screenshot,
-                      'Screenshot',
+                      'Taking screenshot...',
                     ),
                   ),
                   ActionTile(
-                    title: 'Rotation',
-                    icon: Icons.screen_rotation_rounded,
+                    title: 'Lock Screen',
+                    icon: Icons.lock_outline_rounded,
+                    iconColor: AppColors.error,
                     onTap: () => _triggerAction(
-                      SystemActionType.screenRotation,
-                      'Screen Rotation',
+                      SystemActionType.lockScreen,
+                      'Screen locked',
                     ),
+                  ),
+                  ActionTile(
+                    title: _isTorchOn ? 'Flashlight On' : 'Flashlight',
+                    icon: _isTorchOn
+                        ? Icons.flashlight_on_rounded
+                        : Icons.flashlight_off_rounded,
+                    iconColor: _isTorchOn
+                        ? AppColors.accent
+                        : AppColors.secondary,
+                    onTap: _toggleFlashlight,
                   ),
                 ],
               ),
@@ -169,15 +165,15 @@ class _QuickControlsScreenState extends ConsumerState<QuickControlsScreen> {
           ),
           const SizedBox(height: AppSpacing.lg),
 
-          // 2. SOUND
+          // 2. SOUND CONTROLS
           AppSection(
-            title: 'Sound & Audio',
-            subtitle: 'Volume streams and vibration profile',
+            title: 'Sound & Volume',
+            subtitle: 'Adjust stream levels and ringer profile',
             isCard: true,
             children: [
               SliderRow(
                 title: 'Media Volume',
-                leadingIcon: Icons.volume_up_rounded,
+                leadingIcon: Icons.music_note_rounded,
                 value: _mediaVolume,
                 min: 0,
                 max: 1,
@@ -193,8 +189,8 @@ class _QuickControlsScreenState extends ConsumerState<QuickControlsScreen> {
                 },
               ),
               SliderRow(
-                title: 'Ring Volume',
-                leadingIcon: Icons.notifications_active_rounded,
+                title: 'Ring & Notifications',
+                leadingIcon: Icons.notifications_rounded,
                 value: _ringVolume,
                 min: 0,
                 max: 1,
@@ -227,20 +223,6 @@ class _QuickControlsScreenState extends ConsumerState<QuickControlsScreen> {
                 },
               ),
               const Divider(),
-              ToggleRow(
-                title: 'Mute All Audio',
-                subtitle: 'Silence media, ringers, and system tones',
-                icon: Icons.volume_off_rounded,
-                value: _isMuted,
-                onChanged: (val) => setState(() => _isMuted = val),
-              ),
-              ToggleRow(
-                title: 'Vibrate on Tap',
-                subtitle: 'Haptic feedback for system controls',
-                icon: Icons.vibration_rounded,
-                value: _isVibrate,
-                onChanged: (val) => setState(() => _isVibrate = val),
-              ),
               Padding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: AppSpacing.base,
@@ -262,8 +244,12 @@ class _QuickControlsScreenState extends ConsumerState<QuickControlsScreen> {
                         ButtonSegment(value: 'Silent', label: Text('Silent')),
                       ],
                       selected: {_soundMode},
-                      onSelectionChanged: (s) =>
-                          setState(() => _soundMode = s.first),
+                      onSelectionChanged: (s) {
+                        final mode = s.first;
+                        setState(() => _soundMode = mode);
+                        NativeBridge.instance.setSoundMode(mode);
+                        context.showSnackBar('Sound mode: $mode');
+                      },
                     ),
                   ],
                 ),
@@ -273,10 +259,10 @@ class _QuickControlsScreenState extends ConsumerState<QuickControlsScreen> {
           ),
           const SizedBox(height: AppSpacing.lg),
 
-          // 3. DISPLAY
+          // 3. DISPLAY CONTROLS
           AppSection(
             title: 'Display Controls',
-            subtitle: 'Screen brightness and ambient sensor management',
+            subtitle: 'Screen brightness and ambient settings',
             isCard: true,
             children: [
               SliderRow(
@@ -286,41 +272,106 @@ class _QuickControlsScreenState extends ConsumerState<QuickControlsScreen> {
                 min: 0.05,
                 max: 1.0,
                 valueFormatter: (val) => '${(val * 100).toInt()}%',
-                onChanged: (val) {
-                  setState(() => _brightness = val);
-                  ref
-                      .read(systemActionServiceProvider)
-                      .executeAction(
-                        SystemActionType.brightness,
-                        parameter: val,
-                      );
-                },
+                onChanged: _updateBrightness,
               ),
               ToggleRow(
                 title: 'Auto Brightness',
                 subtitle: 'Adjust according to ambient light sensor',
                 icon: Icons.brightness_auto_rounded,
                 value: _autoBrightness,
-                onChanged: (val) => setState(() => _autoBrightness = val),
+                onChanged: (val) {
+                  setState(() => _autoBrightness = val);
+                  context.showSnackBar(
+                    val
+                        ? 'Auto brightness enabled'
+                        : 'Auto brightness disabled',
+                  );
+                },
               ),
               ListTile(
                 leading: const Icon(Icons.settings_display_rounded),
                 title: const Text('Android Display Settings'),
                 subtitle: const Text('Open device system display preferences'),
                 trailing: const Icon(Icons.open_in_new_rounded, size: 18),
-                onTap: () => _triggerAction(
-                  SystemActionType.displaySettings,
-                  'Display Settings',
+                onTap: () => NativeBridge.instance.openSystemSetting('display'),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.lg),
+
+          // 4. MEDIA CONTROLS
+          AppSection(
+            title: 'Media Playback',
+            subtitle: 'Audio and video media key dispatching',
+            isCard: true,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.base,
+                  vertical: AppSpacing.md,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    IconButton.filledTonal(
+                      icon: const Icon(Icons.skip_previous_rounded),
+                      tooltip: 'Previous Track',
+                      iconSize: 28,
+                      onPressed: () {
+                        _triggerHaptic();
+                        NativeBridge.instance.dispatchMediaKey('previous');
+                        context.showSnackBar('Previous track');
+                      },
+                    ),
+                    IconButton.filled(
+                      icon: Icon(
+                        _isPlayingMedia
+                            ? Icons.pause_rounded
+                            : Icons.play_arrow_rounded,
+                      ),
+                      tooltip: _isPlayingMedia ? 'Pause' : 'Play',
+                      iconSize: 36,
+                      onPressed: () {
+                        _triggerHaptic();
+                        setState(() => _isPlayingMedia = !_isPlayingMedia);
+                        NativeBridge.instance.dispatchMediaKey('play_pause');
+                        context.showSnackBar(
+                          _isPlayingMedia ? 'Media playing' : 'Media paused',
+                        );
+                      },
+                    ),
+                    IconButton.filledTonal(
+                      icon: const Icon(Icons.skip_next_rounded),
+                      tooltip: 'Next Track',
+                      iconSize: 28,
+                      onPressed: () {
+                        _triggerHaptic();
+                        NativeBridge.instance.dispatchMediaKey('next');
+                        context.showSnackBar('Next track');
+                      },
+                    ),
+                    IconButton.outlined(
+                      icon: const Icon(Icons.stop_rounded),
+                      tooltip: 'Stop',
+                      iconSize: 24,
+                      onPressed: () {
+                        _triggerHaptic();
+                        setState(() => _isPlayingMedia = false);
+                        NativeBridge.instance.dispatchMediaKey('stop');
+                        context.showSnackBar('Media stopped');
+                      },
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
           const SizedBox(height: AppSpacing.lg),
 
-          // 4. CONNECTIVITY
+          // 5. CONNECTIVITY SHORTCUTS
           AppSection(
-            title: 'Connectivity',
-            subtitle: 'Radios, wireless protocols, and networking',
+            title: 'Connectivity Shortcuts',
+            subtitle: 'Direct shortcuts to system connectivity panels',
             children: [
               GridView.count(
                 shrinkWrap: true,
@@ -356,6 +407,11 @@ class _QuickControlsScreenState extends ConsumerState<QuickControlsScreen> {
                     SystemActionType.airplaneMode,
                   ),
                   _buildConnectivityTile(
+                    'Location',
+                    Icons.location_on_rounded,
+                    SystemActionType.location,
+                  ),
+                  _buildConnectivityTile(
                     'NFC',
                     Icons.nfc_rounded,
                     SystemActionType.nfc,
@@ -364,11 +420,6 @@ class _QuickControlsScreenState extends ConsumerState<QuickControlsScreen> {
                     'Cast',
                     Icons.cast_rounded,
                     SystemActionType.cast,
-                  ),
-                  _buildConnectivityTile(
-                    'Location',
-                    Icons.location_on_rounded,
-                    SystemActionType.location,
                   ),
                   _buildConnectivityTile(
                     'VPN',
@@ -384,26 +435,43 @@ class _QuickControlsScreenState extends ConsumerState<QuickControlsScreen> {
     );
   }
 
+  Future<void> _updateBrightness(double val) async {
+    setState(() => _brightness = val);
+    final hasWritePerm = await NativeBridge.instance.checkPermission(
+      'writeSettings',
+    );
+    if (!mounted) return;
+    if (!hasWritePerm) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text(
+            'Permission required to modify system brightness',
+          ),
+          action: SnackBarAction(
+            label: 'Grant',
+            onPressed: () =>
+                NativeBridge.instance.requestPermission('writeSettings'),
+          ),
+        ),
+      );
+    } else {
+      ref
+          .read(systemActionServiceProvider)
+          .executeAction(SystemActionType.brightness, parameter: val);
+    }
+  }
+
   Widget _buildConnectivityTile(
     String name,
     IconData icon,
     SystemActionType actionType,
   ) {
-    final isEnabled = _connectivityToggles[name] ?? false;
-
     return ActionTile(
       title: name,
       icon: icon,
-      isActive: isEnabled,
-      iconColor: isEnabled ? AppColors.secondary : null,
+      isActive: false,
       onTap: () {
-        setState(() {
-          _connectivityToggles[name] = !isEnabled;
-        });
-        _triggerAction(
-          actionType,
-          '$name (${!isEnabled ? "Enabled" : "Disabled"})',
-        );
+        _triggerAction(actionType, 'Opening $name settings');
       },
     );
   }

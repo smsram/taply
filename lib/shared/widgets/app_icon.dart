@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_spacing.dart';
@@ -6,6 +8,7 @@ class AppIcon extends StatelessWidget {
   final String appName;
   final IconData? iconData;
   final Color? color;
+  final Uint8List? iconBytes;
   final double size;
   final double borderRadius;
 
@@ -14,12 +17,29 @@ class AppIcon extends StatelessWidget {
     required this.appName,
     this.iconData,
     this.color,
+    this.iconBytes,
     this.size = 44.0,
     this.borderRadius = AppSpacing.radiusMd,
   });
 
   @override
   Widget build(BuildContext context) {
+    if (iconBytes != null) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(borderRadius),
+        child: Image.memory(
+          iconBytes!,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) => _buildFallback(context),
+        ),
+      );
+    }
+    return _buildFallback(context);
+  }
+
+  Widget _buildFallback(BuildContext context) {
     final effectiveColor = color ?? const Color(0xFF2563EB);
 
     return Container(

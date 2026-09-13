@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Taply – Assistive Touch</string>
+    <string name="accessibility_service_label">Taply Assistive Navigation</string>
+    <string name="accessibility_service_description">Enables Taply to execute navigation actions such as Back, Home, Recent Apps, and Lock Screen when triggered from the assistive floating button.</string>
+    <string name="overlay_notification_channel_name">Taply Assistant Service</string>
+    <string name="overlay_notification_channel_desc">Active floating assistive touch service</string>
+    <string name="overlay_notification_title">Taply is Active</string>
+    <string name="overlay_notification_text">Floating assistive button is ready. Tap to open Taply.</string>
+</resources>
+

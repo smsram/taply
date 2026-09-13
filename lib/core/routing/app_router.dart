@@ -5,6 +5,7 @@ import '../../features/app_opener/app_opener_screen.dart';
 import '../../features/apps/app_drawer_screen.dart';
 import '../../features/apps/apps_screen.dart';
 import '../../features/customize/customize_screen.dart';
+import '../../features/floating_panel/floating_panel_screen.dart';
 import '../../features/gestures/gestures_screen.dart';
 import '../../features/home/home_screen.dart';
 import '../../features/onboarding/onboarding_screen.dart';
@@ -12,6 +13,7 @@ import '../../features/permissions/permissions_screen.dart';
 import '../../features/quick_controls/quick_controls_screen.dart';
 import '../../features/settings/settings_screen.dart';
 import '../../features/tools/calculator_screen.dart';
+import '../../features/tools/compass_screen.dart';
 import '../../features/tools/device_info_screen.dart';
 import '../../features/tools/flashlight_screen.dart';
 import '../../features/tools/notes_screen.dart';
@@ -20,56 +22,32 @@ import '../../features/tools/stopwatch_screen.dart';
 import '../../features/tools/timer_screen.dart';
 import '../../features/tools/tools_screen.dart';
 import '../../features/tools/unit_converter_screen.dart';
+import '../../features/tools/screen_magnifier_screen.dart';
 import '../../shared/widgets/bottom_navigation.dart';
 
 final GlobalKey<NavigatorState> _rootNavigatorKey = GlobalKey<NavigatorState>(
   debugLabel: 'root',
 );
-final GlobalKey<NavigatorState> _shellNavigatorKey = GlobalKey<NavigatorState>(
-  debugLabel: 'shell',
-);
 
 class ScaffoldWithNavBar extends StatelessWidget {
-  const ScaffoldWithNavBar({required this.child, super.key});
+  const ScaffoldWithNavBar({required this.navigationShell, super.key});
 
-  final Widget child;
+  final StatefulNavigationShell navigationShell;
 
-  int _calculateSelectedIndex(BuildContext context) {
-    final location = GoRouterState.of(context).uri.path;
-    if (location.startsWith('/apps')) return 1;
-    if (location.startsWith('/tools')) return 2;
-    if (location.startsWith('/customize')) return 3;
-    if (location.startsWith('/settings')) return 4;
-    return 0; // Home
-  }
-
-  void _onItemTapped(int index, BuildContext context) {
-    switch (index) {
-      case 0:
-        context.go('/');
-        break;
-      case 1:
-        context.go('/apps');
-        break;
-      case 2:
-        context.go('/tools');
-        break;
-      case 3:
-        context.go('/customize');
-        break;
-      case 4:
-        context.go('/settings');
-        break;
-    }
+  void _onItemTapped(int index) {
+    navigationShell.goBranch(
+      index,
+      initialLocation: index == navigationShell.currentIndex,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: child,
+      body: navigationShell,
       bottomNavigationBar: TaplyBottomNavigation(
-        currentIndex: _calculateSelectedIndex(context),
-        onDestinationSelected: (index) => _onItemTapped(index, context),
+        currentIndex: navigationShell.currentIndex,
+        onDestinationSelected: _onItemTapped,
       ),
     );
   }
@@ -79,25 +57,47 @@ final GoRouter appRouter = GoRouter(
   navigatorKey: _rootNavigatorKey,
   initialLocation: '/',
   routes: [
-    ShellRoute(
-      navigatorKey: _shellNavigatorKey,
-      builder: (context, state, child) {
-        return ScaffoldWithNavBar(child: child);
+    StatefulShellRoute.indexedStack(
+      builder: (context, state, navigationShell) {
+        return ScaffoldWithNavBar(navigationShell: navigationShell);
       },
-      routes: [
-        GoRoute(path: '/', builder: (context, state) => const HomeScreen()),
-        GoRoute(path: '/apps', builder: (context, state) => const AppsScreen()),
-        GoRoute(
-          path: '/tools',
-          builder: (context, state) => const ToolsScreen(),
+      branches: [
+        StatefulShellBranch(
+          routes: [
+            GoRoute(path: '/', builder: (context, state) => const HomeScreen()),
+          ],
         ),
-        GoRoute(
-          path: '/customize',
-          builder: (context, state) => const CustomizeScreen(),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/apps',
+              builder: (context, state) => const AppsScreen(),
+            ),
+          ],
         ),
-        GoRoute(
-          path: '/settings',
-          builder: (context, state) => const SettingsScreen(),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/tools',
+              builder: (context, state) => const ToolsScreen(),
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/customize',
+              builder: (context, state) => const CustomizeScreen(),
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/settings',
+              builder: (context, state) => const SettingsScreen(),
+            ),
+          ],
         ),
       ],
     ),
@@ -127,6 +127,22 @@ final GoRouter appRouter = GoRouter(
       parentNavigatorKey: _rootNavigatorKey,
       path: '/permissions',
       builder: (context, state) => const PermissionsScreen(),
+    ),
+    GoRoute(
+      parentNavigatorKey: _rootNavigatorKey,
+      path: '/floating-panel',
+      pageBuilder: (context, state) => CustomTransitionPage<void>(
+        key: state.pageKey,
+        opaque: false,
+        barrierDismissible: true,
+        barrierColor: Colors.transparent,
+        transitionDuration: const Duration(milliseconds: 160),
+        reverseTransitionDuration: const Duration(milliseconds: 140),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return FadeTransition(opacity: animation, child: child);
+        },
+        child: const FloatingPanelScreen(),
+      ),
     ),
     GoRoute(
       parentNavigatorKey: _rootNavigatorKey,
@@ -174,6 +190,16 @@ final GoRouter appRouter = GoRouter(
       parentNavigatorKey: _rootNavigatorKey,
       path: '/tools/unit-converter',
       builder: (context, state) => const UnitConverterScreen(),
+    ),
+    GoRoute(
+      parentNavigatorKey: _rootNavigatorKey,
+      path: '/tools/compass',
+      builder: (context, state) => const CompassScreen(),
+    ),
+    GoRoute(
+      parentNavigatorKey: _rootNavigatorKey,
+      path: '/tools/magnifier',
+      builder: (context, state) => const ScreenMagnifierScreen(),
     ),
   ],
 );

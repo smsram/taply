@@ -104,11 +104,15 @@ class PermissionsScreen extends ConsumerWidget {
               ...items.map((item) {
                 return PermissionTile(
                   item: item,
-                  onRequest: () {
-                    ref.read(permissionsProvider.notifier).request(item.type);
-                    context.showSnackBar(
-                      'Access granted for ${item.title} (Phase 1 Simulated / Ready for Phase 2 Native Intent)',
-                    );
+                  onRequest: () async {
+                    await ref
+                        .read(permissionsProvider.notifier)
+                        .request(item.type);
+                    if (context.mounted) {
+                      context.showSnackBar(
+                        'Opening settings for ${item.title}...',
+                      );
+                    }
                   },
                 );
               }),

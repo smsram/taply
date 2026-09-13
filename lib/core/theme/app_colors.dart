@@ -16,9 +16,10 @@ class AppColors {
   static const Color border = Color(0xFFE2E8F0);
 
   // Semantic Status Colors
-  static const Color success = Color(0xFF16A34A);
-  static const Color warning = Color(0xFFD97706);
-  static const Color error = Color(0xFFDC2626);
+  static const Color success = Color(0xFF22C55E);
+  static const Color warning = Color(0xFFF59E0B);
+  static const Color error = Color(0xFFEF4444);
+  static const Color danger = Color(0xFFEF4444);
 
   // Dark Mode Colors
   static const Color darkBackground = Color(0xFF0B1220);

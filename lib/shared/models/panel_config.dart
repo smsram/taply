@@ -76,4 +76,51 @@ class PanelConfig {
       closeOnAction: closeOnAction ?? this.closeOnAction,
     );
   }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'layoutStyle': layoutStyle.name,
+      'maxActions': maxActions,
+      'actionOrder': actionOrder,
+      'appShortcutPackages': appShortcutPackages,
+      'showLabels': showLabels,
+      'closeOnAction': closeOnAction,
+    };
+  }
+
+  factory PanelConfig.fromMap(Map<String, dynamic> map) {
+    return PanelConfig(
+      layoutStyle: PanelLayoutStyle.values.firstWhere(
+        (e) => e.name == map['layoutStyle'],
+        orElse: () => PanelLayoutStyle.grid3x3,
+      ),
+      maxActions: map['maxActions'] as int? ?? 8,
+      actionOrder:
+          (map['actionOrder'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          const [
+            'home',
+            'back',
+            'recent_apps',
+            'lock_screen',
+            'screenshot',
+            'volume',
+            'brightness',
+            'apps',
+          ],
+      appShortcutPackages:
+          (map['appShortcutPackages'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          const [
+            'com.google.android.dialer',
+            'com.google.android.apps.messaging',
+            'com.google.android.GoogleCamera',
+            'com.android.chrome',
+          ],
+      showLabels: map['showLabels'] as bool? ?? true,
+      closeOnAction: map['closeOnAction'] as bool? ?? true,
+    );
+  }
 }

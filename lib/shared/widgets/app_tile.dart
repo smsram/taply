@@ -39,6 +39,7 @@ class AppTile extends StatelessWidget {
                     appName: app.appName,
                     iconData: app.defaultIcon,
                     color: app.iconColor,
+                    iconBytes: app.iconBytes,
                     size: 48,
                   ),
                   if (app.isFavorite)
@@ -95,6 +96,7 @@ class AppTile extends StatelessWidget {
               appName: app.appName,
               iconData: app.defaultIcon,
               color: app.iconColor,
+              iconBytes: app.iconBytes,
               size: 42,
             ),
             const SizedBox(width: AppSpacing.md),

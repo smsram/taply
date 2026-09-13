@@ -4,11 +4,26 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/constants/app_constants.dart';
 import 'core/routing/app_router.dart';
+import 'core/services/native_bridge.dart';
 import 'core/services/providers.dart';
+import 'core/services/storage_service.dart';
 import 'core/theme/app_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize storage service eagerly
+  final storageService = SharedPreferencesStorageService();
+  await storageService.init();
+
+  // Listen for native intent routes (e.g. from OverlayService or shortcuts)
+  NativeBridge.instance.setNavigationHandler((route) {
+    try {
+      appRouter.go(route);
+    } catch (e) {
+      debugPrint('[Taply] Failed to navigate to native route: $route ($e)');
+    }
+  });
 
   // Android system bar configuration
   SystemChrome.setSystemUIOverlayStyle(
@@ -20,7 +35,12 @@ void main() async {
     ),
   );
 
-  runApp(const ProviderScope(child: TaplyApp()));
+  runApp(
+    ProviderScope(
+      overrides: [storageServiceProvider.overrideWithValue(storageService)],
+      child: const TaplyApp(),
+    ),
+  );
 }
 
 class TaplyApp extends ConsumerWidget {

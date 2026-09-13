@@ -5,8 +5,10 @@ class AppConstants {
   static const String appName = 'Taply';
   static const String appDisplayName = 'Taply – Assistive Touch';
   static const String appTagline = 'Everything, one tap away.';
-  static const String appVersion = '1.0.0 (Phase 1)';
-  static const String buildNumber = '1';
+  static const String appVersion = '1.0.0';
+  static const String buildNumber = '100';
+  static const String privacyStatement =
+      'Taply operates 100% on your device. We do not collect, track, or transmit your personal data, app usage, or system actions.';
 
   // Persistence Keys
   static const String keyFirstRun = 'taply_first_run';

@@ -7,6 +7,8 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/utils/extensions.dart';
 import '../../shared/models/installed_app.dart';
+import '../../shared/widgets/app_launch_modal.dart';
+import '../../shared/widgets/app_picker_dialog.dart';
 import '../../shared/widgets/app_section.dart';
 import '../../shared/widgets/app_tile.dart';
 import '../../shared/widgets/empty_state.dart';
@@ -37,94 +39,7 @@ class _AppsScreenState extends ConsumerState<AppsScreen> {
   }
 
   void _onAppTap(InstalledApp app) {
-    ref.read(appsProvider.notifier).recordLaunch(app.packageName);
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (context) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(AppSpacing.base),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ListTile(
-                  leading: Icon(
-                    app.defaultIcon,
-                    color: app.iconColor,
-                    size: 36,
-                  ),
-                  title: Text(
-                    app.appName,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  subtitle: Text(app.packageName),
-                ),
-                const Divider(),
-                ListTile(
-                  leading: const Icon(Icons.launch_rounded),
-                  title: const Text('Open Application'),
-                  subtitle: const Text('Normal full-screen launch'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    context.showSnackBar(
-                      'Launching ${app.appName} (Phase 2 Native PackageManager)',
-                    );
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.picture_in_picture_alt_rounded),
-                  title: const Text('Open in Floating Window'),
-                  subtitle: const Text('Floating / Freeform window mode'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    context.showSnackBar(
-                      'Freeform mode check: depends on OS support in Phase 2',
-                    );
-                  },
-                ),
-                ListTile(
-                  leading: Icon(
-                    app.isFavorite
-                        ? Icons.star_rounded
-                        : Icons.star_outline_rounded,
-                  ),
-                  title: Text(
-                    app.isFavorite
-                        ? 'Remove from Favorites'
-                        : 'Add to Favorites',
-                  ),
-                  onTap: () {
-                    Navigator.pop(context);
-                    ref
-                        .read(appsProvider.notifier)
-                        .toggleFavorite(app.packageName);
-                  },
-                ),
-                ListTile(
-                  leading: Icon(
-                    app.isHidden
-                        ? Icons.visibility_rounded
-                        : Icons.visibility_off_rounded,
-                  ),
-                  title: Text(
-                    app.isHidden ? 'Unhide App' : 'Hide from Taply Drawer',
-                  ),
-                  onTap: () {
-                    Navigator.pop(context);
-                    ref
-                        .read(appsProvider.notifier)
-                        .toggleHidden(app.packageName);
-                  },
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
+    AppLaunchModal.show(context, app);
   }
 
   @override
@@ -251,6 +166,12 @@ class _AppsScreenState extends ConsumerState<AppsScreen> {
                               title: 'Favorites',
                               subtitle:
                                   '${favoriteApps.length} quick access applications',
+                              trailing: TextButton.icon(
+                                onPressed: () =>
+                                    AppPickerDialog.show(context, allApps),
+                                icon: const Icon(Icons.add_rounded, size: 18),
+                                label: const Text('Add Favorites'),
+                              ),
                               children: [_buildAppCollection(favoriteApps)],
                             )
                           else
@@ -270,9 +191,17 @@ class _AppsScreenState extends ConsumerState<AppsScreen> {
                                       const SizedBox(width: AppSpacing.md),
                                       Expanded(
                                         child: Text(
-                                          'No favorite apps yet. Tap the star icon on any app to pin it here.',
+                                          'No favorite apps yet. Tap the button to select apps to pin.',
                                           style: context.textTheme.bodySmall,
                                         ),
+                                      ),
+                                      const SizedBox(width: AppSpacing.sm),
+                                      ElevatedButton(
+                                        onPressed: () => AppPickerDialog.show(
+                                          context,
+                                          allApps,
+                                        ),
+                                        child: const Text('Add Favorites'),
                                       ),
                                     ],
                                   ),

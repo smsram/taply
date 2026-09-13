@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../shared/models/installed_app.dart';
+import 'native_bridge.dart';
+import 'storage_service.dart';
 
 abstract class IAppService {
   Future<List<InstalledApp>> getInstalledApps();
@@ -12,12 +14,142 @@ abstract class IAppService {
   Future<void> recordLaunch(String packageName);
 }
 
-/// Phase 1 application repository implementation.
-/// Provides sample Android-standard utility apps for UI testing.
-/// In Phase 2, this will be replaced with native Android PackageManager method channels.
+/// Real Android Native Application Service.
+/// Uses Android PackageManager via MethodChannel and persists favorites/hidden states locally.
+class NativeAppService implements IAppService {
+  final NativeBridge _bridge = NativeBridge.instance;
+  final IStorageService storage;
+  List<InstalledApp>? _cachedApps;
+
+  NativeAppService({required this.storage});
+
+  @override
+  Future<List<InstalledApp>> getInstalledApps() async {
+    if (_cachedApps != null) return _cachedApps!;
+
+    final nativeList = await _bridge.getInstalledApps(includeIcons: true);
+    final favList = storage.getStringList('taply_favorites') ?? [];
+    final hiddenList = storage.getStringList('taply_hidden') ?? [];
+
+    if (nativeList.isNotEmpty) {
+      _cachedApps = nativeList.map((m) {
+        final pkg = m['packageName'] as String? ?? '';
+        final name = m['appName'] as String? ?? pkg;
+        final isSys = m['isSystemApp'] as bool? ?? false;
+        final iconBase64 = m['iconBase64'] as String?;
+        final iconBytes = NativeBridge.decodeBase64Icon(iconBase64);
+
+        return InstalledApp(
+          packageName: pkg,
+          appName: name,
+          isSystemApp: isSys,
+          iconBytes: iconBytes,
+          isFavorite: favList.contains(pkg),
+          isHidden: hiddenList.contains(pkg),
+        );
+      }).toList();
+      return _cachedApps!;
+    }
+
+    // Fallback if running in mock/desktop/test environment
+    _cachedApps = List<InstalledApp>.from(MockAppService.sampleApps);
+    _cachedApps = MockAppService.sampleApps.map((app) {
+      return app.copyWith(
+        isFavorite: favList.isNotEmpty
+            ? favList.contains(app.packageName)
+            : app.isFavorite,
+        isHidden: hiddenList.contains(app.packageName),
+      );
+    }).toList();
+    return _cachedApps!;
+  }
+
+  @override
+  Future<List<InstalledApp>> getFavoriteApps() async {
+    final apps = await getInstalledApps();
+    return apps.where((a) => a.isFavorite && !a.isHidden).toList();
+  }
+
+  @override
+  Future<List<InstalledApp>> getRecentApps() async {
+    final apps = await getInstalledApps();
+    final recents = apps
+        .where((a) => a.lastUsedAt != null && !a.isHidden)
+        .toList();
+    recents.sort((a, b) => b.lastUsedAt!.compareTo(a.lastUsedAt!));
+    return recents;
+  }
+
+  @override
+  Future<void> toggleFavorite(String packageName) async {
+    final apps = await getInstalledApps();
+    final index = apps.indexWhere((a) => a.packageName == packageName);
+    if (index != -1) {
+      final current = apps[index];
+      final newFav = !current.isFavorite;
+      apps[index] = current.copyWith(isFavorite: newFav);
+
+      final favList = List<String>.from(
+        storage.getStringList('taply_favorites') ?? [],
+      );
+      if (newFav) {
+        if (!favList.contains(packageName)) favList.add(packageName);
+      } else {
+        favList.remove(packageName);
+      }
+      await storage.setStringList('taply_favorites', favList);
+    }
+  }
+
+  @override
+  Future<void> toggleHidden(String packageName) async {
+    final apps = await getInstalledApps();
+    final index = apps.indexWhere((a) => a.packageName == packageName);
+    if (index != -1) {
+      final current = apps[index];
+      final newHidden = !current.isHidden;
+      apps[index] = current.copyWith(isHidden: newHidden);
+
+      final hiddenList = List<String>.from(
+        storage.getStringList('taply_hidden') ?? [],
+      );
+      if (newHidden) {
+        if (!hiddenList.contains(packageName)) hiddenList.add(packageName);
+      } else {
+        hiddenList.remove(packageName);
+      }
+      await storage.setStringList('taply_hidden', hiddenList);
+    }
+  }
+
+  @override
+  Future<void> updateLaunchMode(String packageName, AppLaunchMode mode) async {
+    final apps = await getInstalledApps();
+    final index = apps.indexWhere((a) => a.packageName == packageName);
+    if (index != -1) {
+      apps[index] = apps[index].copyWith(launchMode: mode);
+    }
+  }
+
+  @override
+  Future<void> recordLaunch(String packageName) async {
+    final apps = await getInstalledApps();
+    final index = apps.indexWhere((a) => a.packageName == packageName);
+    if (index != -1) {
+      apps[index] = apps[index].copyWith(
+        lastUsedAt: DateTime.now(),
+        usageCount: apps[index].usageCount + 1,
+      );
+    }
+    // Trigger real Android app launch
+    await _bridge.launchApp(packageName);
+  }
+}
+
+/// Fallback sample applications for tests and simulation.
 class MockAppService implements IAppService {
-  final List<InstalledApp> _apps = [
-    const InstalledApp(
+  static const List<InstalledApp> sampleApps = [
+    InstalledApp(
       packageName: 'com.google.android.dialer',
       appName: 'Phone',
       defaultIcon: Icons.phone_rounded,
@@ -25,7 +157,7 @@ class MockAppService implements IAppService {
       isSystemApp: true,
       isFavorite: true,
     ),
-    const InstalledApp(
+    InstalledApp(
       packageName: 'com.google.android.apps.messaging',
       appName: 'Messages',
       defaultIcon: Icons.message_rounded,
@@ -33,7 +165,7 @@ class MockAppService implements IAppService {
       isSystemApp: true,
       isFavorite: true,
     ),
-    const InstalledApp(
+    InstalledApp(
       packageName: 'com.google.android.GoogleCamera',
       appName: 'Camera',
       defaultIcon: Icons.camera_alt_rounded,
@@ -41,7 +173,7 @@ class MockAppService implements IAppService {
       isSystemApp: true,
       isFavorite: true,
     ),
-    const InstalledApp(
+    InstalledApp(
       packageName: 'com.google.android.apps.photos',
       appName: 'Photos',
       defaultIcon: Icons.photo_library_rounded,
@@ -49,7 +181,7 @@ class MockAppService implements IAppService {
       isSystemApp: true,
       isFavorite: true,
     ),
-    const InstalledApp(
+    InstalledApp(
       packageName: 'com.android.chrome',
       appName: 'Chrome',
       defaultIcon: Icons.language_rounded,
@@ -57,7 +189,7 @@ class MockAppService implements IAppService {
       isSystemApp: true,
       isFavorite: false,
     ),
-    const InstalledApp(
+    InstalledApp(
       packageName: 'com.google.android.deskclock',
       appName: 'Clock',
       defaultIcon: Icons.access_time_filled_rounded,
@@ -65,7 +197,7 @@ class MockAppService implements IAppService {
       isSystemApp: true,
       isFavorite: false,
     ),
-    const InstalledApp(
+    InstalledApp(
       packageName: 'com.google.android.calculator',
       appName: 'Calculator',
       defaultIcon: Icons.calculate_rounded,
@@ -73,7 +205,7 @@ class MockAppService implements IAppService {
       isSystemApp: true,
       isFavorite: false,
     ),
-    const InstalledApp(
+    InstalledApp(
       packageName: 'com.google.android.calendar',
       appName: 'Calendar',
       defaultIcon: Icons.calendar_today_rounded,
@@ -81,7 +213,7 @@ class MockAppService implements IAppService {
       isSystemApp: true,
       isFavorite: false,
     ),
-    const InstalledApp(
+    InstalledApp(
       packageName: 'com.google.android.apps.maps',
       appName: 'Maps',
       defaultIcon: Icons.map_rounded,
@@ -89,7 +221,7 @@ class MockAppService implements IAppService {
       isSystemApp: true,
       isFavorite: false,
     ),
-    const InstalledApp(
+    InstalledApp(
       packageName: 'com.google.android.apps.nbu.files',
       appName: 'Files',
       defaultIcon: Icons.folder_rounded,
@@ -97,7 +229,7 @@ class MockAppService implements IAppService {
       isSystemApp: true,
       isFavorite: false,
     ),
-    const InstalledApp(
+    InstalledApp(
       packageName: 'com.android.settings',
       appName: 'Settings',
       defaultIcon: Icons.settings_rounded,
@@ -105,7 +237,7 @@ class MockAppService implements IAppService {
       isSystemApp: true,
       isFavorite: false,
     ),
-    const InstalledApp(
+    InstalledApp(
       packageName: 'com.google.android.music',
       appName: 'Music',
       defaultIcon: Icons.music_note_rounded,
@@ -115,15 +247,15 @@ class MockAppService implements IAppService {
     ),
   ];
 
-  @override
-  Future<List<InstalledApp>> getInstalledApps() async {
-    return List.unmodifiable(_apps);
-  }
+  final List<InstalledApp> _apps = List.from(sampleApps);
 
   @override
-  Future<List<InstalledApp>> getFavoriteApps() async {
-    return _apps.where((app) => app.isFavorite && !app.isHidden).toList();
-  }
+  Future<List<InstalledApp>> getInstalledApps() async =>
+      List.unmodifiable(_apps);
+
+  @override
+  Future<List<InstalledApp>> getFavoriteApps() async =>
+      _apps.where((app) => app.isFavorite && !app.isHidden).toList();
 
   @override
   Future<List<InstalledApp>> getRecentApps() async {

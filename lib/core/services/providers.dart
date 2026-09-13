@@ -1,16 +1,19 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../shared/models/app_settings.dart';
-import '../../shared/models/installed_app.dart';
-import '../../shared/models/gesture_action.dart';
-import '../../shared/models/permission_item.dart';
 import '../../shared/models/floating_button_config.dart';
+import '../../shared/models/gesture_action.dart';
+import '../../shared/models/installed_app.dart';
 import '../../shared/models/panel_config.dart';
+import '../../shared/models/permission_item.dart';
 import '../theme/app_theme.dart';
-import 'storage_service.dart';
-import 'permission_service.dart';
 import 'app_service.dart';
+import 'native_bridge.dart';
+import 'permission_service.dart';
+import 'storage_service.dart';
 import 'system_action_service.dart';
 
 // Services
@@ -19,58 +22,100 @@ final storageServiceProvider = Provider<IStorageService>((ref) {
 });
 
 final permissionServiceProvider = Provider<IPermissionService>((ref) {
-  return MockPermissionService();
+  return NativePermissionService();
 });
 
 final appServiceProvider = Provider<IAppService>((ref) {
-  return MockAppService();
+  final storage = ref.watch(storageServiceProvider);
+  return NativeAppService(storage: storage);
 });
 
 final systemActionServiceProvider = Provider<ISystemActionService>((ref) {
-  return MockSystemActionService();
+  return NativeSystemActionService();
 });
 
 // App Settings Notifier
 class AppSettingsNotifier extends Notifier<AppSettings> {
+  static const _storageKey = 'taply_settings';
+
   @override
   AppSettings build() {
+    final storage = ref.watch(storageServiceProvider);
+    final raw = storage.getString(_storageKey);
+    if (raw != null && raw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(raw) as Map<String, dynamic>;
+        return AppSettings.fromMap(decoded);
+      } catch (e) {
+        debugPrint('[AppSettingsNotifier] Error restoring settings: $e');
+      }
+    }
     return const AppSettings();
+  }
+
+  void _persist() {
+    final storage = ref.read(storageServiceProvider);
+    storage.setString(_storageKey, jsonEncode(state.toMap()));
   }
 
   void toggleAssistant(bool enabled) {
     state = state.copyWith(isAssistantEnabled: enabled);
+    _persist();
+    if (enabled) {
+      NativeBridge.instance.startOverlayService();
+      _syncConfigToNative();
+    } else {
+      NativeBridge.instance.stopOverlayService();
+    }
   }
 
   void setThemeMode(AppThemeMode mode) {
     state = state.copyWith(themeMode: mode);
+    _persist();
   }
 
   void updateButtonConfig(FloatingButtonConfig config) {
     state = state.copyWith(buttonConfig: config);
+    _persist();
+    _syncConfigToNative();
   }
 
   void updatePanelConfig(PanelConfig config) {
     state = state.copyWith(panelConfig: config);
+    _persist();
   }
 
   void setDefaultLaunchMode(AppLaunchMode mode) {
     state = state.copyWith(defaultLaunchMode: mode);
+    _persist();
   }
 
   void setHapticFeedback(bool enabled) {
     state = state.copyWith(hapticFeedback: enabled);
+    _persist();
+    _syncConfigToNative();
   }
 
   void setStartWithDevice(bool enabled) {
     state = state.copyWith(startWithDevice: enabled);
+    _persist();
   }
 
   void setLanguage(String lang) {
     state = state.copyWith(language: lang);
+    _persist();
   }
 
   void completeOnboarding() {
     state = state.copyWith(isOnboardingCompleted: true);
+    _persist();
+  }
+
+  void _syncConfigToNative() {
+    NativeBridge.instance.updateOverlayConfig(
+      config: state.buttonConfig,
+      gestures: ref.read(gesturesProvider),
+    );
   }
 }
 
@@ -80,38 +125,65 @@ final settingsProvider = NotifierProvider<AppSettingsNotifier, AppSettings>(() {
 
 // Gestures Notifier
 class GesturesNotifier extends Notifier<Map<GestureTrigger, GestureBinding>> {
+  static const _storageKey = 'taply_gestures';
+
+  static const _defaultGestures = {
+    GestureTrigger.singleTap: GestureBinding(
+      trigger: GestureTrigger.singleTap,
+      target: GestureActionTarget.openPanel,
+    ),
+    GestureTrigger.doubleTap: GestureBinding(
+      trigger: GestureTrigger.doubleTap,
+      target: GestureActionTarget.screenshot,
+    ),
+    GestureTrigger.longPress: GestureBinding(
+      trigger: GestureTrigger.longPress,
+      target: GestureActionTarget.quickControls,
+    ),
+    GestureTrigger.swipeUp: GestureBinding(
+      trigger: GestureTrigger.swipeUp,
+      target: GestureActionTarget.appDrawer,
+    ),
+    GestureTrigger.swipeDown: GestureBinding(
+      trigger: GestureTrigger.swipeDown,
+      target: GestureActionTarget.flashlight,
+    ),
+    GestureTrigger.swipeLeft: GestureBinding(
+      trigger: GestureTrigger.swipeLeft,
+      target: GestureActionTarget.none,
+    ),
+    GestureTrigger.swipeRight: GestureBinding(
+      trigger: GestureTrigger.swipeRight,
+      target: GestureActionTarget.none,
+    ),
+  };
+
   @override
   Map<GestureTrigger, GestureBinding> build() {
-    return {
-      GestureTrigger.singleTap: const GestureBinding(
-        trigger: GestureTrigger.singleTap,
-        target: GestureActionTarget.openPanel,
-      ),
-      GestureTrigger.doubleTap: const GestureBinding(
-        trigger: GestureTrigger.doubleTap,
-        target: GestureActionTarget.screenshot,
-      ),
-      GestureTrigger.longPress: const GestureBinding(
-        trigger: GestureTrigger.longPress,
-        target: GestureActionTarget.quickControls,
-      ),
-      GestureTrigger.swipeUp: const GestureBinding(
-        trigger: GestureTrigger.swipeUp,
-        target: GestureActionTarget.appDrawer,
-      ),
-      GestureTrigger.swipeDown: const GestureBinding(
-        trigger: GestureTrigger.swipeDown,
-        target: GestureActionTarget.flashlight,
-      ),
-      GestureTrigger.swipeLeft: const GestureBinding(
-        trigger: GestureTrigger.swipeLeft,
-        target: GestureActionTarget.none,
-      ),
-      GestureTrigger.swipeRight: const GestureBinding(
-        trigger: GestureTrigger.swipeRight,
-        target: GestureActionTarget.none,
-      ),
-    };
+    final storage = ref.watch(storageServiceProvider);
+    final raw = storage.getString(_storageKey);
+    if (raw != null && raw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(raw) as Map<String, dynamic>;
+        final result = <GestureTrigger, GestureBinding>{};
+        for (final entry in decoded.entries) {
+          final trigger = GestureTrigger.values.firstWhere(
+            (t) => t.name == entry.key,
+            orElse: () => GestureTrigger.singleTap,
+          );
+          result[trigger] = GestureBinding.fromMap(
+            Map<String, dynamic>.from(entry.value as Map),
+          );
+        }
+        for (final defaultEntry in _defaultGestures.entries) {
+          result.putIfAbsent(defaultEntry.key, () => defaultEntry.value);
+        }
+        return result;
+      } catch (e) {
+        debugPrint('[GesturesNotifier] Error restoring gestures: $e');
+      }
+    }
+    return Map.from(_defaultGestures);
   }
 
   void updateBinding(
@@ -126,6 +198,18 @@ class GesturesNotifier extends Notifier<Map<GestureTrigger, GestureBinding>> {
       customPayload: customPayload,
     );
     state = updated;
+
+    final storage = ref.read(storageServiceProvider);
+    final serialized = <String, dynamic>{};
+    for (final entry in state.entries) {
+      serialized[entry.key.name] = entry.value.toMap();
+    }
+    storage.setString(_storageKey, jsonEncode(serialized));
+
+    NativeBridge.instance.updateOverlayConfig(
+      config: ref.read(settingsProvider).buttonConfig,
+      gestures: state,
+    );
   }
 }
 
@@ -140,6 +224,12 @@ class AppsNotifier extends AsyncNotifier<List<InstalledApp>> {
   Future<List<InstalledApp>> build() async {
     final service = ref.watch(appServiceProvider);
     return service.getInstalledApps();
+  }
+
+  Future<void> refreshApps() async {
+    state = const AsyncLoading();
+    final service = ref.read(appServiceProvider);
+    state = AsyncData(await service.getInstalledApps());
   }
 
   Future<void> toggleFavorite(String packageName) async {
@@ -223,12 +313,27 @@ class PermissionsNotifier extends AsyncNotifier<List<PermissionItem>> {
             PermissionStatus.notDetermined,
         isMandatory: false,
       ),
+      PermissionItem(
+        type: PermissionType.writeSettings,
+        title: 'Modify System Settings',
+        subtitle: 'Screen brightness adjustment',
+        description: 'Allows Taply to adjust screen brightness directly from quick controls without opening the full system settings menu.',
+        icon: Icons.brightness_6_rounded,
+        status:
+            statuses[PermissionType.writeSettings] ??
+            PermissionStatus.notDetermined,
+        isMandatory: false,
+      ),
     ];
   }
 
   Future<void> request(PermissionType type) async {
     final service = ref.read(permissionServiceProvider);
     await service.requestPermission(type);
+    ref.invalidateSelf();
+  }
+
+  Future<void> refresh() async {
     ref.invalidateSelf();
   }
 }

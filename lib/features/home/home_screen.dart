@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/constants/app_constants.dart';
+import '../../core/services/native_bridge.dart';
 import '../../core/services/providers.dart';
 import '../../core/services/system_action_service.dart';
 import '../../core/theme/app_colors.dart';
@@ -88,8 +89,8 @@ class HomeScreen extends ConsumerWidget {
             child: FloatingButtonPreview(
               config: settings.buttonConfig,
               isEnabled: settings.isAssistantEnabled,
-              onCustomizeTap: () => context.push('/customize'),
-              onButtonTap: () => context.push('/quick-controls'),
+              onCustomizeTap: () => context.go('/customize'),
+              onButtonTap: () => context.push('/floating-panel'),
             ),
           ),
           const SizedBox(height: AppSpacing.md),
@@ -114,9 +115,7 @@ class HomeScreen extends ConsumerWidget {
                       ref
                           .read(systemActionServiceProvider)
                           .executeAction(SystemActionType.lockScreen);
-                      context.showSnackBar(
-                        'Lock Screen requested (Phase 2 Native API)',
-                      );
+                      context.showSnackBar('Screen locked');
                     },
                   ),
                   QuickActionItemData(
@@ -142,9 +141,7 @@ class HomeScreen extends ConsumerWidget {
                       ref
                           .read(systemActionServiceProvider)
                           .executeAction(SystemActionType.screenshot);
-                      context.showSnackBar(
-                        'Screenshot action queued (Phase 2 Native API)',
-                      );
+                      context.showSnackBar('Taking screenshot...');
                     },
                   ),
                   QuickActionItemData(
@@ -156,9 +153,7 @@ class HomeScreen extends ConsumerWidget {
                       ref
                           .read(systemActionServiceProvider)
                           .executeAction(SystemActionType.home);
-                      context.showSnackBar(
-                        'System Home action (Phase 2 Accessibility API)',
-                      );
+                      context.showSnackBar('Home pressed');
                     },
                   ),
                   QuickActionItemData(
@@ -170,9 +165,7 @@ class HomeScreen extends ConsumerWidget {
                       ref
                           .read(systemActionServiceProvider)
                           .executeAction(SystemActionType.back);
-                      context.showSnackBar(
-                        'System Back action (Phase 2 Accessibility API)',
-                      );
+                      context.showSnackBar('Back pressed');
                     },
                   ),
                   QuickActionItemData(
@@ -184,9 +177,7 @@ class HomeScreen extends ConsumerWidget {
                       ref
                           .read(systemActionServiceProvider)
                           .executeAction(SystemActionType.recentApps);
-                      context.showSnackBar(
-                        'Recent Apps action (Phase 2 Accessibility API)',
-                      );
+                      context.showSnackBar('Recent apps opened');
                     },
                   ),
                   QuickActionItemData(
@@ -194,7 +185,7 @@ class HomeScreen extends ConsumerWidget {
                     title: 'Apps',
                     icon: Icons.apps_rounded,
                     color: const Color(0xFF14B8A6),
-                    onTap: () => context.push('/apps'),
+                    onTap: () => context.go('/apps'),
                   ),
                 ],
               ),
@@ -215,7 +206,7 @@ class HomeScreen extends ConsumerWidget {
                 title: 'Favorite Apps',
                 subtitle: 'Pinned for rapid one-touch opening',
                 trailing: TextButton(
-                  onPressed: () => context.push('/apps'),
+                  onPressed: () => context.go('/apps'),
                   child: const Text('Manage'),
                 ),
                 children: [
@@ -262,7 +253,7 @@ class HomeScreen extends ConsumerWidget {
                               ),
                             ),
                             ElevatedButton(
-                              onPressed: () => context.push('/apps'),
+                              onPressed: () => context.go('/apps'),
                               child: const Text('Add Apps'),
                             ),
                           ],
@@ -305,6 +296,7 @@ class HomeScreen extends ConsumerWidget {
                               appName: app.appName,
                               iconData: app.defaultIcon,
                               color: app.iconColor,
+                              iconBytes: app.iconBytes,
                               size: 38,
                             ),
                             title: Text(
@@ -324,9 +316,8 @@ class HomeScreen extends ConsumerWidget {
                               ref
                                   .read(appsProvider.notifier)
                                   .recordLaunch(app.packageName);
-                              context.showSnackBar(
-                                'Launching ${app.appName} (Phase 2 Native)',
-                              );
+                              NativeBridge.instance.launchApp(app.packageName);
+                              context.showSnackBar('Opening ${app.appName}...');
                             },
                           );
                         },
@@ -394,7 +385,8 @@ class HomeScreen extends ConsumerWidget {
     return InkWell(
       onTap: () {
         ref.read(appsProvider.notifier).recordLaunch(app.packageName);
-        context.showSnackBar('Opening ${app.appName} (Phase 2 Native)');
+        NativeBridge.instance.launchApp(app.packageName);
+        context.showSnackBar('Opening ${app.appName}...');
       },
       borderRadius: AppSpacing.borderRadiusMd,
       child: Container(
@@ -407,6 +399,7 @@ class HomeScreen extends ConsumerWidget {
               appName: app.appName,
               iconData: app.defaultIcon,
               color: app.iconColor,
+              iconBytes: app.iconBytes,
               size: 48,
             ),
             const SizedBox(height: 4),

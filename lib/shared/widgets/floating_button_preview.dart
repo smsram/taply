@@ -179,7 +179,11 @@ class _FloatingButtonPreviewState extends State<FloatingButtonPreview> {
                       });
                     },
                     onTap: widget.isEnabled ? widget.onButtonTap : null,
-                    child: _buildButtonWidget(context, buttonSize),
+                    child: Semantics(
+                      button: true,
+                      label: 'Taply Floating Assistant Button',
+                      child: _buildButtonWidget(context, buttonSize),
+                    ),
                   ),
                 ),
               ],

@@ -86,4 +86,42 @@ class FloatingButtonConfig {
       customColor: customColor ?? this.customColor,
     );
   }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'size': size,
+      'opacity': opacity,
+      'idleOpacity': idleOpacity,
+      'autoHideIdle': autoHideIdle,
+      'idleTimeoutSeconds': idleTimeoutSeconds,
+      'edgeSnapping': edgeSnapping,
+      'hapticFeedback': hapticFeedback,
+      'iconStyle': iconStyle.name,
+      'animationType': animationType.name,
+      'customColor': customColor.value,
+    };
+  }
+
+  factory FloatingButtonConfig.fromMap(Map<String, dynamic> map) {
+    return FloatingButtonConfig(
+      size: (map['size'] as num?)?.toDouble() ?? 56.0,
+      opacity: (map['opacity'] as num?)?.toDouble() ?? 0.85,
+      idleOpacity: (map['idleOpacity'] as num?)?.toDouble() ?? 0.45,
+      autoHideIdle: map['autoHideIdle'] as bool? ?? true,
+      idleTimeoutSeconds: map['idleTimeoutSeconds'] as int? ?? 3,
+      edgeSnapping: map['edgeSnapping'] as bool? ?? true,
+      hapticFeedback: map['hapticFeedback'] as bool? ?? true,
+      iconStyle: ButtonIconStyle.values.firstWhere(
+        (e) => e.name == map['iconStyle'],
+        orElse: () => ButtonIconStyle.defaultDot,
+      ),
+      animationType: ButtonAnimationType.values.firstWhere(
+        (e) => e.name == map['animationType'],
+        orElse: () => ButtonAnimationType.none,
+      ),
+      customColor: map['customColor'] != null
+          ? Color(map['customColor'] as int)
+          : const Color(0xFF2563EB),
+    );
+  }
 }

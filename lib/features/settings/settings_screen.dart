@@ -8,9 +8,10 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/extensions.dart';
-import '../../shared/models/panel_config.dart';
+import '../../shared/models/installed_app.dart';
 import '../../shared/widgets/app_section.dart';
 import '../../shared/widgets/setting_tile.dart';
+import '../../shared/widgets/taply_brand_logo.dart';
 import '../../shared/widgets/toggle_row.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -123,6 +124,73 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
+  void _showPrivacyDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Row(
+            children: const [
+              Icon(
+                Icons.verified_user_rounded,
+                color: AppColors.primary,
+                size: 24,
+              ),
+              SizedBox(width: AppSpacing.sm),
+              Text('Privacy & Trust'),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: const [
+                Text(
+                  '100% On-Device Operation',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                ),
+                SizedBox(height: 6),
+                Text(
+                  'Taply is an offline-first assistive utility. Your preferences, favorite apps, and system actions stay strictly on your device.',
+                  style: TextStyle(fontSize: 13, height: 1.4),
+                ),
+                SizedBox(height: AppSpacing.md),
+                Text(
+                  'Why Permissions are Needed:',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  '• Overlay: Allows the assistive button to float over other apps.\n'
+                  '• Accessibility: Performs Back, Home, Recents, and Lock Screen actions on your tap.\n'
+                  '• Notifications: Keeps the background service active and responsive.\n'
+                  '• Battery: Prevents Android from terminating Taply while multitasking.',
+                  style: TextStyle(fontSize: 13, height: 1.4),
+                ),
+                SizedBox(height: AppSpacing.md),
+                Text(
+                  'No Data Collection',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'Taply contains zero analytics trackers, advertisements, or telemetry SDKs. We do not read your screen text or store passwords.',
+                  style: TextStyle(fontSize: 13, height: 1.4),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Close'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(settingsProvider);
@@ -165,13 +233,21 @@ class SettingsScreen extends ConsumerWidget {
               SettingTile(
                 icon: Icons.vibration_rounded,
                 title: 'Haptic Feedback',
-                subtitle: settings.hapticFeedback ? 'Enabled' : 'Disabled',
+                subtitle: settings.hapticFeedback
+                    ? 'Subtle click vibrations on action'
+                    : 'Haptics disabled',
                 trailing: Switch(
                   value: settings.hapticFeedback,
                   onChanged: (val) => ref
                       .read(settingsProvider.notifier)
                       .setHapticFeedback(val),
                 ),
+              ),
+              SettingTile(
+                icon: Icons.school_rounded,
+                title: 'Welcome Tutorial',
+                subtitle: 'Replay the 4-step introductory walkthrough',
+                onTap: () => context.push('/onboarding'),
                 showDivider: false,
               ),
             ],
@@ -181,7 +257,7 @@ class SettingsScreen extends ConsumerWidget {
           // 2. FLOATING ASSISTANT
           AppSection(
             title: 'Floating Assistant',
-            subtitle: 'Button appearance, sizing, and position snapping',
+            subtitle: 'Control how Taply appears over other apps',
             isCard: true,
             children: [
               SettingTile(
@@ -195,39 +271,63 @@ class SettingsScreen extends ConsumerWidget {
                 icon: Icons.border_outer_rounded,
                 title: 'Edge Snapping & Physics',
                 subtitle: settings.buttonConfig.edgeSnapping
-                    ? 'Snaps to screen borders'
+                    ? 'Snaps to screen borders smoothly'
                     : 'Free floating anywhere',
                 onTap: () => context.push('/customize'),
+              ),
+              SettingTile(
+                icon: Icons.open_in_browser_rounded,
+                title: 'Open Floating Panel',
+                subtitle: 'Preview and test the floating assistant panel',
+                onTap: () => context.push('/floating-panel'),
                 showDivider: false,
               ),
             ],
           ),
           const SizedBox(height: AppSpacing.lg),
 
-          // 3. QUICK PANEL
+          // 3. ACCESSIBILITY & SYSTEM ACTIONS
           AppSection(
-            title: 'Quick Panel',
-            subtitle: 'Customize grid dimensions and reorder tiles',
+            title: 'Accessibility',
+            subtitle: 'Enable supported system actions',
             isCard: true,
             children: [
               SettingTile(
-                icon: Icons.grid_view_rounded,
-                title: 'Panel Layout',
-                subtitle: settings.panelConfig.layoutStyle.displayName,
-                onTap: () => context.push('/customize'),
+                icon: Icons.accessibility_new_rounded,
+                title: 'System Actions Access',
+                subtitle: 'Required for Back, Home, Recents, and Lock Screen',
+                onTap: () => context.push('/permissions'),
               ),
               SettingTile(
-                icon: Icons.reorder_rounded,
-                title: 'Action Order & App Shortcuts',
-                subtitle: 'Drag and reorder items inside the floating panel',
-                onTap: () => context.push('/customize'),
+                icon: Icons.gesture_rounded,
+                title: 'Button Gestures',
+                subtitle: 'Map single tap, double tap, and flick swipes',
+                onTap: () => context.push('/gestures'),
                 showDivider: false,
               ),
             ],
           ),
           const SizedBox(height: AppSpacing.lg),
 
-          // 4. APPS
+          // 4. BATTERY & RELIABILITY
+          AppSection(
+            title: 'Battery',
+            subtitle: 'Improve reliability on some devices',
+            isCard: true,
+            children: [
+              SettingTile(
+                icon: Icons.battery_saver_rounded,
+                title: 'Battery Optimization Exemption',
+                subtitle:
+                    'Prevents Android OS from killing the floating service',
+                onTap: () => context.push('/permissions'),
+                showDivider: false,
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.lg),
+
+          // 5. APPLICATIONS
           AppSection(
             title: 'Applications',
             subtitle: 'App drawer options and launch behavior',
@@ -242,33 +342,17 @@ class SettingsScreen extends ConsumerWidget {
               ),
               SettingTile(
                 icon: Icons.open_in_new_rounded,
-                title: 'Default Launch Behavior',
-                subtitle: settings.defaultLaunchMode.name.toUpperCase(),
+                title: 'App Opener UX',
+                subtitle: settings.defaultLaunchMode == AppLaunchMode.normal
+                    ? 'Normal Full Screen (Universal)'
+                    : 'Supported Floating Mode',
                 onTap: () => context.push('/app-opener'),
               ),
               SettingTile(
                 icon: Icons.apps_rounded,
                 title: 'Open Full App Drawer',
-                subtitle: 'View all installed apps with alphabetical search',
+                subtitle: 'Mini launcher with search and A–Z index',
                 onTap: () => context.push('/app-drawer'),
-                showDivider: false,
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.lg),
-
-          // 5. GESTURES
-          AppSection(
-            title: 'Gestures',
-            subtitle: 'Tap, double-tap, long-press, and directional swipes',
-            isCard: true,
-            children: [
-              SettingTile(
-                icon: Icons.gesture_rounded,
-                title: 'Configure Button Gestures',
-                subtitle:
-                    'Map single tap, double tap, and flick swipes to actions',
-                onTap: () => context.push('/gestures'),
                 showDivider: false,
               ),
             ],
@@ -292,16 +376,22 @@ class SettingsScreen extends ConsumerWidget {
           ),
           const SizedBox(height: AppSpacing.lg),
 
-          // 7. PERMISSIONS
+          // 7. PRIVACY & PERMISSIONS
           AppSection(
-            title: 'Permissions',
-            subtitle: 'Manage floating overlay and accessibility privileges',
+            title: 'Privacy & Permissions',
+            subtitle: 'Transparent on-device security guarantee',
             isCard: true,
             children: [
               SettingTile(
+                icon: Icons.verified_user_rounded,
+                title: 'Privacy Policy & Data Notice',
+                subtitle: '100% on-device operation. No analytics or tracking.',
+                onTap: () => _showPrivacyDialog(context),
+              ),
+              SettingTile(
                 icon: Icons.security_rounded,
                 title: 'Permission Center',
-                subtitle: 'Check and grant required Android privileges',
+                subtitle: 'Check and manage Android OS privileges',
                 onTap: () => context.push('/permissions'),
                 showDivider: false,
               ),
@@ -309,35 +399,57 @@ class SettingsScreen extends ConsumerWidget {
           ),
           const SizedBox(height: AppSpacing.lg),
 
-          // 8. ABOUT
+          // 8. ABOUT TAPLY
           AppSection(
             title: 'About Taply',
             subtitle: 'Version and legal information',
             isCard: true,
             children: [
-              SettingTile(
-                icon: Icons.info_outline_rounded,
-                title: 'App Version',
-                subtitle: AppConstants.appVersion,
-                onTap: () => context.showSnackBar(
-                  'Taply v${AppConstants.appVersion} (Build ${AppConstants.buildNumber})',
+              Padding(
+                padding: const EdgeInsets.all(AppSpacing.base),
+                child: Row(
+                  children: [
+                    const TaplyBrandLogo(size: 48),
+                    const SizedBox(width: AppSpacing.md),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            AppConstants.appDisplayName,
+                            style: context.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          Text(
+                            AppConstants.appTagline,
+                            style: context.textTheme.bodySmall?.copyWith(
+                              color: AppColors.secondaryText,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Version ${AppConstants.appVersion} • Build ${AppConstants.buildNumber}',
+                            style: context.textTheme.labelSmall,
+                          ),
+                          Text(
+                            'Developer: Taply Open Source Team',
+                            style: context.textTheme.labelSmall?.copyWith(
+                              color: AppColors.secondaryText,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
+              const Divider(height: 1),
               SettingTile(
-                icon: Icons.privacy_tip_outlined,
+                icon: Icons.policy_rounded,
                 title: 'Privacy Policy',
-                subtitle: 'No analytics tracking or data collection',
-                onTap: () => context.showSnackBar(
-                  'Opening Privacy Policy: ${AppConstants.privacyPolicyUrl}',
-                ),
-              ),
-              SettingTile(
-                icon: Icons.description_outlined,
-                title: 'Terms of Service',
-                subtitle: 'Standard utility terms and conditions',
-                onTap: () => context.showSnackBar(
-                  'Opening Terms: ${AppConstants.termsOfServiceUrl}',
-                ),
+                subtitle: 'Zero data collection • 100% on-device',
+                onTap: () => _showPrivacyDialog(context),
               ),
               SettingTile(
                 icon: Icons.code_rounded,
@@ -357,7 +469,7 @@ class SettingsScreen extends ConsumerWidget {
                 title: 'Contact & Support',
                 subtitle: AppConstants.contactEmail,
                 onTap: () => context.showSnackBar(
-                  'Contact email: ${AppConstants.contactEmail}',
+                  'Contact: ${AppConstants.contactEmail}',
                 ),
                 showDivider: false,
               ),

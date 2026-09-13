@@ -9,6 +9,7 @@ import '../../shared/models/floating_button_config.dart';
 import '../../shared/models/panel_config.dart';
 import '../../shared/widgets/app_section.dart';
 import '../../shared/widgets/floating_button_preview.dart';
+import '../../shared/widgets/floating_panel_preview.dart';
 import '../../shared/widgets/slider_row.dart';
 import '../../shared/widgets/toggle_row.dart';
 
@@ -214,6 +215,16 @@ class _CustomizeScreenState extends ConsumerState<CustomizeScreen> {
                 }).toList(),
               ),
             ],
+          ),
+          const SizedBox(height: AppSpacing.lg),
+
+          // Live Floating Panel Preview
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.base),
+            child: FloatingPanelPreview(
+              panelConfig: panelConfig,
+              primaryColor: buttonConfig.customColor,
+            ),
           ),
           const SizedBox(height: AppSpacing.lg),
 

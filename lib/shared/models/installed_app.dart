@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 enum AppLaunchMode { normal, floating }
@@ -10,6 +12,7 @@ class InstalledApp {
   final int versionCode;
   final IconData defaultIcon;
   final Color iconColor;
+  final Uint8List? iconBytes;
   final bool isSystemApp;
   final bool isFavorite;
   final bool isHidden;
@@ -24,6 +27,7 @@ class InstalledApp {
     this.versionCode = 1,
     this.defaultIcon = Icons.android_rounded,
     this.iconColor = const Color(0xFF2563EB),
+    this.iconBytes,
     this.isSystemApp = false,
     this.isFavorite = false,
     this.isHidden = false,
@@ -39,6 +43,7 @@ class InstalledApp {
     int? versionCode,
     IconData? defaultIcon,
     Color? iconColor,
+    Uint8List? iconBytes,
     bool? isSystemApp,
     bool? isFavorite,
     bool? isHidden,
@@ -53,6 +58,7 @@ class InstalledApp {
       versionCode: versionCode ?? this.versionCode,
       defaultIcon: defaultIcon ?? this.defaultIcon,
       iconColor: iconColor ?? this.iconColor,
+      iconBytes: iconBytes ?? this.iconBytes,
       isSystemApp: isSystemApp ?? this.isSystemApp,
       isFavorite: isFavorite ?? this.isFavorite,
       isHidden: isHidden ?? this.isHidden,

@@ -50,4 +50,46 @@ class AppSettings {
           isOnboardingCompleted ?? this.isOnboardingCompleted,
     );
   }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'isAssistantEnabled': isAssistantEnabled,
+      'startWithDevice': startWithDevice,
+      'language': language,
+      'hapticFeedback': hapticFeedback,
+      'themeMode': themeMode.name,
+      'buttonConfig': buttonConfig.toMap(),
+      'panelConfig': panelConfig.toMap(),
+      'defaultLaunchMode': defaultLaunchMode.name,
+      'isOnboardingCompleted': isOnboardingCompleted,
+    };
+  }
+
+  factory AppSettings.fromMap(Map<String, dynamic> map) {
+    return AppSettings(
+      isAssistantEnabled: map['isAssistantEnabled'] as bool? ?? true,
+      startWithDevice: map['startWithDevice'] as bool? ?? true,
+      language: map['language'] as String? ?? 'System default',
+      hapticFeedback: map['hapticFeedback'] as bool? ?? true,
+      themeMode: AppThemeMode.values.firstWhere(
+        (e) => e.name == map['themeMode'],
+        orElse: () => AppThemeMode.system,
+      ),
+      buttonConfig: map['buttonConfig'] is Map<String, dynamic>
+          ? FloatingButtonConfig.fromMap(
+              Map<String, dynamic>.from(map['buttonConfig'] as Map),
+            )
+          : const FloatingButtonConfig(),
+      panelConfig: map['panelConfig'] is Map<String, dynamic>
+          ? PanelConfig.fromMap(
+              Map<String, dynamic>.from(map['panelConfig'] as Map),
+            )
+          : const PanelConfig(),
+      defaultLaunchMode: AppLaunchMode.values.firstWhere(
+        (e) => e.name == map['defaultLaunchMode'],
+        orElse: () => AppLaunchMode.normal,
+      ),
+      isOnboardingCompleted: map['isOnboardingCompleted'] as bool? ?? true,
+    );
+  }
 }

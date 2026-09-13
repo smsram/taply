@@ -7,6 +7,7 @@ import '../../core/theme/app_spacing.dart';
 import '../../core/utils/extensions.dart';
 import '../../shared/models/installed_app.dart';
 import '../../shared/widgets/app_icon.dart';
+import '../../shared/widgets/app_launch_modal.dart';
 import '../../shared/widgets/app_section.dart';
 
 class AppOpenerScreen extends ConsumerWidget {
@@ -139,10 +140,12 @@ class AppOpenerScreen extends ConsumerWidget {
                     itemBuilder: (context, index) {
                       final app = apps[index];
                       return ListTile(
+                        onTap: () => AppLaunchModal.show(context, app),
                         leading: AppIcon(
                           appName: app.appName,
                           iconData: app.defaultIcon,
                           color: app.iconColor,
+                          iconBytes: app.iconBytes,
                           size: 38,
                         ),
                         title: Text(

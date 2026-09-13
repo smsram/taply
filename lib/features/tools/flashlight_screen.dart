@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/services/native_bridge.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/utils/extensions.dart';
@@ -15,6 +16,19 @@ class _FlashlightScreenState extends State<FlashlightScreen> {
   bool _isOn = false;
   bool _isScreenLight = false;
   double _strobeFrequency = 0.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkInitialState();
+  }
+
+  Future<void> _checkInitialState() async {
+    final torch = await NativeBridge.instance.isFlashlightOn();
+    if (mounted) {
+      setState(() => _isOn = torch);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -44,13 +58,14 @@ class _FlashlightScreenState extends State<FlashlightScreen> {
               const Spacer(),
               // Big Flashlight Toggle Button
               GestureDetector(
-                onTap: () {
+                onTap: () async {
+                  await NativeBridge.instance.toggleFlashlight();
                   setState(() => _isOn = !_isOn);
-                  context.showSnackBar(
-                    _isOn
-                        ? 'Flashlight enabled (Hardware torch in Phase 2)'
-                        : 'Flashlight turned off',
-                  );
+                  if (context.mounted) {
+                    context.showSnackBar(
+                      _isOn ? 'Flashlight enabled' : 'Flashlight turned off',
+                    );
+                  }
                 },
                 child: Container(
                   width: 140,
