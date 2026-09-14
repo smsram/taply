@@ -107,11 +107,8 @@ void main() {
         await tester.tap(find.text('Launch Modal'));
         await tester.pumpAndSettle();
 
-        expect(
-          find.text("Floating mode isn't supported for this app or device."),
-          findsOneWidget,
-        );
-        expect(find.text('Open Normally'), findsOneWidget);
+        expect(find.text('Open App'), findsOneWidget);
+        expect(find.text('App Info'), findsOneWidget);
       },
     );
 

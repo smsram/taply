@@ -1,6 +1,8 @@
 package com.taply.taply
 
 import android.content.Intent
+import android.os.Bundle
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -8,6 +10,22 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
 
     private var methodChannelHandler: TaplyMethodChannel? = null
+    private var isFlutterReady = false
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        val splashScreen = installSplashScreen()
+        // Keep Android splash on screen until Flutter finishes rendering its first frame
+        splashScreen.setKeepOnScreenCondition {
+            !isFlutterReady
+        }
+        super.onCreate(savedInstanceState)
+    }
+
+    override fun onFlutterUiDisplayed() {
+        super.onFlutterUiDisplayed()
+        // Triggered when Flutter paints its very first frame
+        isFlutterReady = true
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)

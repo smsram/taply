@@ -48,15 +48,20 @@ class AppSettingsNotifier extends Notifier<AppSettings> {
   AppSettings build() {
     final storage = ref.watch(storageServiceProvider);
     final raw = storage.getString(_storageKey);
+    final onboardingDone = storage.getBool('taply_onboarding_completed');
     if (raw != null && raw.isNotEmpty) {
       try {
         final decoded = jsonDecode(raw) as Map<String, dynamic>;
-        return AppSettings.fromMap(decoded);
+        var settings = AppSettings.fromMap(decoded);
+        if (onboardingDone != null) {
+          settings = settings.copyWith(isOnboardingCompleted: onboardingDone);
+        }
+        return settings;
       } catch (e) {
         debugPrint('[AppSettingsNotifier] Error restoring settings: $e');
       }
     }
-    return const AppSettings();
+    return AppSettings(isOnboardingCompleted: onboardingDone ?? false);
   }
 
   void _persist() {
@@ -86,9 +91,14 @@ class AppSettingsNotifier extends Notifier<AppSettings> {
     _syncConfigToNative();
   }
 
-  void updatePanelConfig(PanelConfig config) {
+  void updatePanelConfig(PanelConfig config, {bool markUserCustomized = true}) {
     state = state.copyWith(panelConfig: config);
     _persist();
+    if (markUserCustomized) {
+      ref
+          .read(storageServiceProvider)
+          .setBool('taply_user_customized_actions', true);
+    }
     _syncConfigToNative();
   }
 
@@ -114,6 +124,9 @@ class AppSettingsNotifier extends Notifier<AppSettings> {
   }
 
   void completeOnboarding() {
+    ref
+        .read(storageServiceProvider)
+        .setBool('taply_onboarding_completed', true);
     state = state.copyWith(isOnboardingCompleted: true);
     _persist();
   }
@@ -261,9 +274,8 @@ class AppsNotifier extends AsyncNotifier<List<InstalledApp>> {
   Future<void> toggleFavorite(String packageName) async {
     final service = ref.read(appServiceProvider);
     await service.toggleFavorite(packageName);
-    state = AsyncData(await service.getInstalledApps());
     final apps = await service.getInstalledApps();
-    state = AsyncData(apps);
+    state = AsyncData(List<InstalledApp>.from(apps));
     final favList = apps
         .where((a) => a.isFavorite)
         .map((a) => a.packageName)
@@ -274,16 +286,16 @@ class AppsNotifier extends AsyncNotifier<List<InstalledApp>> {
   Future<void> setFavorites(List<String> packageNames) async {
     final service = ref.read(appServiceProvider);
     await service.setFavorites(packageNames);
-    state = AsyncData(await service.getInstalledApps());
+    final apps = await service.getInstalledApps();
+    state = AsyncData(List<InstalledApp>.from(apps));
     _syncFavoritesToNative(packageNames);
   }
 
   Future<void> reorderFavorites(int oldIndex, int newIndex) async {
     final service = ref.read(appServiceProvider);
     await service.reorderFavorites(oldIndex, newIndex);
-    state = AsyncData(await service.getInstalledApps());
     final apps = await service.getInstalledApps();
-    state = AsyncData(apps);
+    state = AsyncData(List<InstalledApp>.from(apps));
     final favList = apps
         .where((a) => a.isFavorite)
         .map((a) => a.packageName)
@@ -294,7 +306,8 @@ class AppsNotifier extends AsyncNotifier<List<InstalledApp>> {
   Future<void> toggleHidden(String packageName) async {
     final service = ref.read(appServiceProvider);
     await service.toggleHidden(packageName);
-    state = AsyncData(await service.getInstalledApps());
+    final apps = await service.getInstalledApps();
+    state = AsyncData(List<InstalledApp>.from(apps));
   }
 
   Future<void> updateLaunchMode(String packageName, AppLaunchMode mode) async {

@@ -22,9 +22,8 @@ class PrimaryButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: height,
-      width: double.infinity,
+    return ConstrainedBox(
+      constraints: BoxConstraints(minHeight: height, minWidth: double.infinity),
       child: ElevatedButton(
         onPressed: isLoading ? null : onPressed,
         style: backgroundColor != null
@@ -47,12 +46,17 @@ class PrimaryButton extends StatelessWidget {
                     Icon(icon, size: 18),
                     const SizedBox(width: AppSpacing.sm),
                   ],
-                  Text(
-                    label,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0.1,
+                  Flexible(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.1,
+                      ),
                     ),
                   ),
                 ],

@@ -8,15 +8,25 @@ import 'package:taply/features/tools/stopwatch_screen.dart';
 import 'package:taply/features/tools/screen_magnifier_screen.dart';
 import 'package:taply/features/tools/notes_screen.dart';
 import 'package:taply/features/tools/device_info_screen.dart';
+import 'package:taply/core/routing/app_router.dart';
 import 'package:taply/core/theme/app_theme.dart';
 import 'package:taply/core/services/providers.dart';
+
+import 'test_helpers.dart';
 
 void main() {
   group('Taply Navigation & Shell Tabs', () {
     testWidgets('Tapping bottom navigation tabs switches screens', (
       WidgetTester tester,
     ) async {
-      await tester.pumpWidget(const ProviderScope(child: TaplyApp()));
+      appRouter.go('/splash');
+      final storage = TestStorageService({'taply_onboarding_completed': true});
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [storageServiceProvider.overrideWithValue(storage)],
+          child: const TaplyApp(),
+        ),
+      );
       await tester.pumpAndSettle();
 
       // Verify Home Screen initially loaded

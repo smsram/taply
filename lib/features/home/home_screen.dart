@@ -63,13 +63,14 @@ class HomeScreen extends ConsumerWidget {
           ),
           IconButton(
             icon: const Icon(Icons.settings_outlined),
-            onPressed: () => context.push('/settings'),
+            onPressed: () => context.go('/settings'),
             tooltip: context.loc.settings,
           ),
           const SizedBox(width: AppSpacing.xs),
         ],
       ),
       body: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.only(bottom: AppSpacing.xxl),
         children: [
           const SizedBox(height: AppSpacing.sm),
@@ -108,7 +109,11 @@ class HomeScreen extends ConsumerWidget {
           // 3. QUICK ACTIONS (Grid of 8 required actions)
           // 3. QUICK ACTIONS (Dynamic actions from configured actionOrder)
           AppSection(
-            title: context.loc.quickActions,
+            title:
+                context.loc.quickActions != 'quickActions' &&
+                    context.loc.quickActions.isNotEmpty
+                ? context.loc.quickActions
+                : 'Quick Actions',
             subtitle: 'Immediate system shortcuts',
             trailing: TextButton(
               onPressed: () => context.push('/quick-controls'),

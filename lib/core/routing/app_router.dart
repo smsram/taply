@@ -15,6 +15,7 @@ import '../../features/quick_actions/quick_actions_screen.dart';
 import '../../features/settings/licenses_screen.dart';
 import '../../features/settings/privacy_policy_screen.dart';
 import '../../features/settings/settings_screen.dart';
+import '../../features/splash/splash_screen.dart';
 import '../../features/tools/battery_diagnostics_screen.dart';
 import '../../features/tools/calculator_screen.dart';
 import '../../features/tools/compass_screen.dart';
@@ -60,7 +61,7 @@ class ScaffoldWithNavBar extends StatelessWidget {
 
 final GoRouter appRouter = GoRouter(
   navigatorKey: _rootNavigatorKey,
-  initialLocation: '/',
+  initialLocation: '/splash',
   routes: [
     StatefulShellRoute.indexedStack(
       builder: (context, state, navigationShell) {
@@ -148,6 +149,11 @@ final GoRouter appRouter = GoRouter(
         },
         child: const FloatingPanelScreen(),
       ),
+    ),
+    GoRoute(
+      parentNavigatorKey: _rootNavigatorKey,
+      path: '/splash',
+      builder: (context, state) => const SplashScreen(),
     ),
     GoRoute(
       parentNavigatorKey: _rootNavigatorKey,

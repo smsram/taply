@@ -23,7 +23,7 @@ class AppSettings {
     this.buttonConfig = const FloatingButtonConfig(),
     this.panelConfig = const PanelConfig(),
     this.defaultLaunchMode = AppLaunchMode.normal,
-    this.isOnboardingCompleted = true,
+    this.isOnboardingCompleted = false,
   });
 
   AppSettings copyWith({
@@ -89,7 +89,7 @@ class AppSettings {
         (e) => e.name == map['defaultLaunchMode'],
         orElse: () => AppLaunchMode.normal,
       ),
-      isOnboardingCompleted: map['isOnboardingCompleted'] as bool? ?? true,
+      isOnboardingCompleted: map['isOnboardingCompleted'] as bool? ?? false,
     );
   }
 }

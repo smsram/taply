@@ -34,9 +34,6 @@ class AppLaunchModal extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final isDark = context.isDarkMode;
-    final isFloatingSupported = app.launchMode == AppLaunchMode.floating;
-
     return Container(
       decoration: BoxDecoration(
         color: context.colorScheme.surface,
@@ -129,118 +126,14 @@ class AppLaunchModal extends ConsumerWidget {
           ),
           const SizedBox(height: AppSpacing.lg),
 
-          // Primary Normal Launch Button
+          // Primary Launch Button
           ElevatedButton.icon(
             onPressed: () => _launchNormal(context, ref),
             icon: const Icon(Icons.open_in_new_rounded, size: 20),
-            label: const Text('Open Normally'),
+            label: const Text('Open App'),
             style: ElevatedButton.styleFrom(
               minimumSize: const Size(double.infinity, AppSpacing.buttonHeight),
             ),
-          ),
-          const SizedBox(height: AppSpacing.sm),
-
-          // Floating Mode Section
-          if (isFloatingSupported)
-            OutlinedButton.icon(
-              onPressed: () {
-                ref.read(appsProvider.notifier).recordLaunch(app.packageName);
-                NativeBridge.instance.launchApp(app.packageName);
-                Navigator.pop(context);
-                context.showSnackBar(
-                  'Opening ${app.appName} in floating mode...',
-                );
-              },
-              icon: const Icon(Icons.picture_in_picture_alt_rounded, size: 20),
-              label: const Text('Open in Floating Window'),
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size(
-                  double.infinity,
-                  AppSpacing.buttonHeight,
-                ),
-              ),
-            )
-          else
-            Container(
-              padding: const EdgeInsets.all(AppSpacing.md),
-              decoration: BoxDecoration(
-                color: isDark
-                    ? AppColors.darkElevatedSurface
-                    : const Color(0xFFF1F5F9),
-                borderRadius: AppSpacing.borderRadiusMd,
-                border: Border.all(
-                  color: isDark ? AppColors.darkBorder : AppColors.border,
-                ),
-              ),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.info_outline_rounded,
-                    size: 20,
-                    color: AppColors.secondaryText,
-                  ),
-                  const SizedBox(width: AppSpacing.sm),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          "Floating mode isn't supported for this app or device.",
-                          style: context.textTheme.labelMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'Taply will launch this app normally in standard full-screen mode.',
-                          style: context.textTheme.bodySmall?.copyWith(
-                            fontSize: 11,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          const SizedBox(height: AppSpacing.md),
-
-          // Launch Mode Selector
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Launch Mode',
-                style: context.textTheme.labelMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              SegmentedButton<AppLaunchMode>(
-                segments: const [
-                  ButtonSegment(
-                    value: AppLaunchMode.normal,
-                    label: Text('Normal', style: TextStyle(fontSize: 12)),
-                    icon: Icon(Icons.fullscreen_rounded, size: 16),
-                  ),
-                  ButtonSegment(
-                    value: AppLaunchMode.floating,
-                    label: Text('Floating', style: TextStyle(fontSize: 12)),
-                    icon: Icon(Icons.picture_in_picture_alt_rounded, size: 16),
-                  ),
-                ],
-                selected: {app.launchMode},
-                onSelectionChanged: (newSelection) {
-                  final newMode = newSelection.first;
-                  ref
-                      .read(appsProvider.notifier)
-                      .updateLaunchMode(app.packageName, newMode);
-                  Navigator.pop(context);
-                  context.showSnackBar(
-                    'Launch mode for ${app.appName} set to ${newMode.name}',
-                  );
-                },
-              ),
-            ],
           ),
           const SizedBox(height: AppSpacing.md),
           const Divider(),

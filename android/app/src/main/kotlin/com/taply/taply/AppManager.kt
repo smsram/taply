@@ -26,7 +26,12 @@ class AppManager(private val context: Context) {
         }
 
         val resolveInfos: List<ResolveInfo> = try {
-            pm.queryIntentActivities(mainIntent, 0)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                pm.queryIntentActivities(mainIntent, PackageManager.ResolveInfoFlags.of(0))
+            } else {
+                @Suppress("DEPRECATION")
+                pm.queryIntentActivities(mainIntent, 0)
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Error querying intent activities", e)
             emptyList()
@@ -109,20 +114,20 @@ class AppManager(private val context: Context) {
         } ?: return null
 
         val outputStream = ByteArrayOutputStream()
-        // Compress to PNG at manageable size (e.g. 96x96 max)
-        val scaledBitmap = if (bitmap.width > 96 || bitmap.height > 96) {
-            Bitmap.createScaledBitmap(bitmap, 96, 96, true)
+        // Compress to PNG at manageable size (64x64 max) to prevent IPC Binder TransactionTooLargeException
+        val scaledBitmap = if (bitmap.width > 64 || bitmap.height > 64) {
+            Bitmap.createScaledBitmap(bitmap, 64, 64, true)
         } else {
             bitmap
         }
-        scaledBitmap.compress(Bitmap.CompressFormat.PNG, 85, outputStream)
+        scaledBitmap.compress(Bitmap.CompressFormat.PNG, 75, outputStream)
         return Base64.encodeToString(outputStream.toByteArray(), Base64.NO_WRAP)
     }
 
     private fun renderDrawableToBitmap(drawable: Drawable): Bitmap? {
-        val width = if (drawable.intrinsicWidth > 0) drawable.intrinsicWidth else 96
-        val height = if (drawable.intrinsicHeight > 0) drawable.intrinsicHeight else 96
-        val bitmap = Bitmap.createBitmap(width.coerceAtMost(144), height.coerceAtMost(144), Bitmap.Config.ARGB_8888)
+        val width = if (drawable.intrinsicWidth > 0) drawable.intrinsicWidth else 64
+        val height = if (drawable.intrinsicHeight > 0) drawable.intrinsicHeight else 64
+        val bitmap = Bitmap.createBitmap(width.coerceAtMost(96), height.coerceAtMost(96), Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         drawable.setBounds(0, 0, canvas.width, canvas.height)
         drawable.draw(canvas)

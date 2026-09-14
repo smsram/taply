@@ -114,6 +114,7 @@ class AppLocalizations {
       'favoriteApps': 'Favorite Apps',
       'recentlyUsed': 'Recently Used',
       'floatingAssistant': 'Floating Assistant',
+      'quickActions': 'Quick Actions',
     },
     'es': {
       'appName': 'Taply',

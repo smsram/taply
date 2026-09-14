@@ -63,12 +63,11 @@ class NativeAppService implements IAppService {
       return _cachedApps!;
     }
 
-    if (_bridge.isNativeAvailable) {
-      return _cachedApps ?? [];
+    if (_cachedApps != null && _cachedApps!.isNotEmpty) {
+      return _cachedApps!;
     }
 
-    // Fallback if running in mock/desktop/test environment
-    _cachedApps = List<InstalledApp>.from(MockAppService.sampleApps);
+    // Fallback if running in mock/desktop/test environment or native query empty
     _cachedApps = MockAppService.sampleApps.map((app) {
       return app.copyWith(
         isFavorite: favList.isNotEmpty
@@ -120,7 +119,9 @@ class NativeAppService implements IAppService {
     if (index != -1) {
       final current = apps[index];
       final newFav = !current.isFavorite;
-      apps[index] = current.copyWith(isFavorite: newFav);
+      final updatedList = List<InstalledApp>.from(apps);
+      updatedList[index] = current.copyWith(isFavorite: newFav);
+      _cachedApps = updatedList;
 
       final favList = List<String>.from(
         storage.getStringList('taply_favorites') ?? [],
@@ -138,12 +139,14 @@ class NativeAppService implements IAppService {
   Future<void> setFavorites(List<String> packageNames) async {
     final apps = await getInstalledApps();
     final favSet = packageNames.toSet();
-    for (int i = 0; i < apps.length; i++) {
-      final isFav = favSet.contains(apps[i].packageName);
-      if (apps[i].isFavorite != isFav) {
-        apps[i] = apps[i].copyWith(isFavorite: isFav);
+    final updatedList = List<InstalledApp>.from(apps);
+    for (int i = 0; i < updatedList.length; i++) {
+      final isFav = favSet.contains(updatedList[i].packageName);
+      if (updatedList[i].isFavorite != isFav) {
+        updatedList[i] = updatedList[i].copyWith(isFavorite: isFav);
       }
     }
+    _cachedApps = updatedList;
     await storage.setStringList('taply_favorites', packageNames);
   }
 
@@ -170,7 +173,9 @@ class NativeAppService implements IAppService {
     if (index != -1) {
       final current = apps[index];
       final newHidden = !current.isHidden;
-      apps[index] = current.copyWith(isHidden: newHidden);
+      final updatedList = List<InstalledApp>.from(apps);
+      updatedList[index] = current.copyWith(isHidden: newHidden);
+      _cachedApps = updatedList;
 
       final hiddenList = List<String>.from(
         storage.getStringList('taply_hidden') ?? [],

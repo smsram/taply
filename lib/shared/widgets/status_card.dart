@@ -122,7 +122,10 @@ class StatusCard extends StatelessWidget {
           Switch.adaptive(
             value: isEnabled,
             onChanged: onToggle,
-            activeColor: activeColor,
+            activeColor: Colors.white,
+            activeTrackColor: activeColor,
+            inactiveThumbColor: context.colorScheme.onSurface.withOpacity(0.5),
+            inactiveTrackColor: context.colorScheme.onSurface.withOpacity(0.12),
           ),
         ],
       ),

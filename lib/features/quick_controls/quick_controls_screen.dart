@@ -2,12 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:go_router/go_router.dart';
+
 import '../../core/services/native_bridge.dart';
 import '../../core/services/providers.dart';
 import '../../core/services/system_action_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/utils/extensions.dart';
+import '../../shared/models/system_action_catalog.dart';
 import '../../shared/widgets/action_tile.dart';
 import '../../shared/widgets/app_section.dart';
 import '../../shared/widgets/slider_row.dart';
@@ -108,6 +111,9 @@ class _QuickControlsScreenState extends ConsumerState<QuickControlsScreen>
   @override
   Widget build(BuildContext context) {
     final isTorchOn = ref.watch(flashlightProvider);
+    final settings = ref.watch(settingsProvider);
+    final actionOrder = settings.panelConfig.actionOrder;
+
     return Scaffold(
       appBar: AppBar(title: const Text('Quick Controls')),
       body: ListView(
@@ -115,68 +121,53 @@ class _QuickControlsScreenState extends ConsumerState<QuickControlsScreen>
         children: [
           const SizedBox(height: AppSpacing.sm),
 
-          // 1. SYSTEM ACTIONS (Highest Priority)
+          // 1. SYSTEM ACTIONS (Highest Priority - Unified Action Order)
           AppSection(
             title: 'System Actions',
             subtitle: 'Core navigation and device management gestures',
             children: [
-              GridView.count(
+              GridView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                crossAxisCount: context.isSmallPhone ? 2 : 3,
-                crossAxisSpacing: AppSpacing.sm,
-                mainAxisSpacing: AppSpacing.sm,
-                childAspectRatio: 1.15,
-                children: [
-                  ActionTile(
-                    title: 'Home',
-                    icon: Icons.home_rounded,
-                    onTap: () =>
-                        _triggerAction(SystemActionType.home, 'Home pressed'),
-                  ),
-                  ActionTile(
-                    title: 'Back',
-                    icon: Icons.arrow_back_rounded,
-                    onTap: () =>
-                        _triggerAction(SystemActionType.back, 'Back pressed'),
-                  ),
-                  ActionTile(
-                    title: 'Recent Apps',
-                    icon: Icons.view_carousel_rounded,
-                    onTap: () => _triggerAction(
-                      SystemActionType.recentApps,
-                      'Recent apps opened',
-                    ),
-                  ),
-                  ActionTile(
-                    title: 'Screenshot',
-                    icon: Icons.screenshot_rounded,
-                    iconColor: AppColors.secondary,
-                    onTap: () => _triggerAction(
-                      SystemActionType.screenshot,
-                      'Taking screenshot...',
-                    ),
-                  ),
-                  ActionTile(
-                    title: 'Lock Screen',
-                    icon: Icons.lock_outline_rounded,
-                    iconColor: AppColors.error,
-                    onTap: () => _triggerAction(
-                      SystemActionType.lockScreen,
-                      'Screen locked',
-                    ),
-                  ),
-                  ActionTile(
-                    title: isTorchOn ? 'Flashlight On' : 'Flashlight',
-                    icon: isTorchOn
-                        ? Icons.flashlight_on_rounded
-                        : Icons.flashlight_off_rounded,
-                    iconColor: isTorchOn
-                        ? AppColors.accent
-                        : AppColors.secondary,
-                    onTap: _toggleFlashlight,
-                  ),
-                ],
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: context.isSmallPhone ? 2 : 3,
+                  crossAxisSpacing: AppSpacing.sm,
+                  mainAxisSpacing: AppSpacing.sm,
+                  childAspectRatio: 1.15,
+                ),
+                itemCount: actionOrder.length,
+                itemBuilder: (context, index) {
+                  final actionId = actionOrder[index];
+                  final action = SystemActionCatalog.getAction(actionId);
+                  final isTorch = action.id == 'flashlight';
+
+                  return ActionTile(
+                    title: isTorch
+                        ? (isTorchOn ? 'Flashlight On' : 'Flashlight')
+                        : action.title,
+                    icon: isTorch
+                        ? (isTorchOn
+                              ? Icons.flashlight_on_rounded
+                              : Icons.flashlight_off_rounded)
+                        : action.icon,
+                    iconColor: isTorch
+                        ? (isTorchOn ? AppColors.accent : action.color)
+                        : action.color,
+                    onTap: () {
+                      if (isTorch) {
+                        _toggleFlashlight();
+                      } else if (action.systemAction != null) {
+                        _triggerAction(
+                          action.systemAction!,
+                          '${action.title} triggered',
+                        );
+                      } else if (action.toolRoute != null) {
+                        _triggerHaptic();
+                        context.push(action.toolRoute!);
+                      }
+                    },
+                  );
+                },
               ),
             ],
           ),
