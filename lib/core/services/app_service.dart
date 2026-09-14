@@ -5,7 +5,7 @@ import 'native_bridge.dart';
 import 'storage_service.dart';
 
 abstract class IAppService {
-  Future<List<InstalledApp>> getInstalledApps();
+  Future<List<InstalledApp>> getInstalledApps({bool forceRefresh = false});
   Future<List<InstalledApp>> getFavoriteApps();
   Future<List<InstalledApp>> getRecentApps();
   Future<void> toggleFavorite(String packageName);
@@ -14,6 +14,7 @@ abstract class IAppService {
   Future<void> toggleHidden(String packageName);
   Future<void> updateLaunchMode(String packageName, AppLaunchMode mode);
   Future<void> recordLaunch(String packageName);
+  void clearCache();
 }
 
 /// Real Android Native Application Service.
@@ -26,8 +27,17 @@ class NativeAppService implements IAppService {
   NativeAppService({required this.storage});
 
   @override
-  Future<List<InstalledApp>> getInstalledApps() async {
-    if (_cachedApps != null) return _cachedApps!;
+  void clearCache() {
+    _cachedApps = null;
+  }
+
+  @override
+  Future<List<InstalledApp>> getInstalledApps({
+    bool forceRefresh = false,
+  }) async {
+    if (!forceRefresh && _cachedApps != null && _cachedApps!.isNotEmpty) {
+      return _cachedApps!;
+    }
 
     final nativeList = await _bridge.getInstalledApps(includeIcons: true);
     final favList = storage.getStringList('taply_favorites') ?? [];
@@ -51,6 +61,10 @@ class NativeAppService implements IAppService {
         );
       }).toList();
       return _cachedApps!;
+    }
+
+    if (_bridge.isNativeAvailable) {
+      return _cachedApps ?? [];
     }
 
     // Fallback if running in mock/desktop/test environment
@@ -298,8 +312,12 @@ class MockAppService implements IAppService {
   final List<InstalledApp> _apps = List.from(sampleApps);
 
   @override
-  Future<List<InstalledApp>> getInstalledApps() async =>
-      List.unmodifiable(_apps);
+  void clearCache() {}
+
+  @override
+  Future<List<InstalledApp>> getInstalledApps({
+    bool forceRefresh = false,
+  }) async => List.unmodifiable(_apps);
 
   @override
   Future<List<InstalledApp>> getFavoriteApps() async =>

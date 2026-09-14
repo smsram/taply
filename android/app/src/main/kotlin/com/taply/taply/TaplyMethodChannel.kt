@@ -20,9 +20,22 @@ class TaplyMethodChannel(private val context: Context) : MethodChannel.MethodCal
     private val deviceInfoManager = DeviceInfoManager(context)
     private val compassManager = CompassManager(context)
 
+    private var methodChannel: MethodChannel? = null
+
     fun register(messenger: BinaryMessenger) {
         val channel = MethodChannel(messenger, CHANNEL_NAME)
         channel.setMethodCallHandler(this)
+        methodChannel = channel
+
+        SystemController.addTorchListener { enabled ->
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                try {
+                    methodChannel?.invokeMethod("onTorchStateChanged", mapOf("enabled" to enabled))
+                } catch (e: Exception) {
+                    // Ignore if engine detached
+                }
+            }
+        }
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
@@ -48,18 +61,18 @@ class TaplyMethodChannel(private val context: Context) : MethodChannel.MethodCal
             "updateOverlayConfig" -> {
                 val intent = Intent(context, OverlayService::class.java).apply {
                     action = "UPDATE_CONFIG"
-                    val size = call.argument<Double>("size")
-                    val opacity = call.argument<Double>("opacity")
-                    val idleOpacity = call.argument<Double>("idleOpacity")
+                    val size = (call.argument<Number>("size"))?.toInt()
+                    val opacity = (call.argument<Number>("opacity"))?.toFloat()
+                    val idleOpacity = (call.argument<Number>("idleOpacity"))?.toFloat()
                     val edgeSnapping = call.argument<Boolean>("edgeSnapping")
                     val hapticFeedback = call.argument<Boolean>("hapticFeedback")
                     val iconStyle = call.argument<String>("iconStyle")
-                    val color = call.argument<Int>("color")
-                    val idleTimeoutSeconds = call.argument<Int>("idleTimeoutSeconds")
+                    val color = (call.argument<Number>("color"))?.toInt()
+                    val idleTimeoutSeconds = (call.argument<Number>("idleTimeoutSeconds"))?.toInt()
 
-                    if (size != null) putExtra("size", size.toInt())
-                    if (opacity != null) putExtra("opacity", opacity.toFloat())
-                    if (idleOpacity != null) putExtra("idleOpacity", idleOpacity.toFloat())
+                    if (size != null) putExtra("size", size)
+                    if (opacity != null) putExtra("opacity", opacity)
+                    if (idleOpacity != null) putExtra("idleOpacity", idleOpacity)
                     if (edgeSnapping != null) putExtra("edgeSnapping", edgeSnapping)
                     if (hapticFeedback != null) putExtra("hapticFeedback", hapticFeedback)
                     if (iconStyle != null) putExtra("iconStyle", iconStyle)
@@ -88,35 +101,50 @@ class TaplyMethodChannel(private val context: Context) : MethodChannel.MethodCal
 
                     val gestures = call.argument<Map<String, String>>("gestures")
                     if (gestures != null) {
+                        val keys = ArrayList<String>()
+                        val values = ArrayList<String>()
                         for ((trigger, target) in gestures) {
                             putExtra("gesture_$trigger", target)
+                            keys.add(trigger)
+                            values.add(target)
                         }
+                        putStringArrayListExtra("gestures_keys", keys)
+                        putStringArrayListExtra("gestures_values", values)
                     }
                 }
-                if (OverlayService.isRunning) {
-                    context.startService(intent)
-                } else {
-                    // Save to SharedPreferences immediately even if overlay service is currently stopped
-                    val prefs = context.getSharedPreferences(OverlayService.PREFS_NAME, Context.MODE_PRIVATE)
-                    val editor = prefs.edit()
-                    intent.extras?.let { bundle ->
-                        for (key in bundle.keySet()) {
-                            when (val v = bundle.get(key)) {
-                                is Int -> editor.putInt(key, v)
-                                is Float -> editor.putFloat(key, v)
-                                is Boolean -> editor.putBoolean(key, v)
-                                is String -> editor.putString(key, v)
-                                is ArrayList<*> -> {
-                                    @Suppress("UNCHECKED_CAST")
-                                    val strList = v as? ArrayList<String>
-                                    if (strList != null) {
-                                        editor.putString(key, strList.joinToString(","))
-                                    }
+
+                // 1. Persist to SharedPreferences immediately (source of truth across restarts)
+                val prefs = context.getSharedPreferences(OverlayService.PREFS_NAME, Context.MODE_PRIVATE)
+                val editor = prefs.edit()
+                intent.extras?.let { bundle ->
+                    for (key in bundle.keySet()) {
+                        when (val v = bundle.get(key)) {
+                            is Int -> editor.putInt(key, v)
+                            is Float -> editor.putFloat(key, v)
+                            is Boolean -> editor.putBoolean(key, v)
+                            is String -> editor.putString(key, v)
+                            is ArrayList<*> -> {
+                                @Suppress("UNCHECKED_CAST")
+                                val strList = v as? ArrayList<String>
+                                if (strList != null) {
+                                    editor.putString(key, strList.joinToString(","))
                                 }
                             }
                         }
                     }
                     editor.apply()
+                }
+
+                // 2. If running, notify current instance directly on the main thread for zero latency
+                if (OverlayService.isRunning) {
+                    android.os.Handler(android.os.Looper.getMainLooper()).post {
+                        OverlayService.currentInstance?.handleIntentConfig(intent)
+                    }
+                    try {
+                        context.startService(intent)
+                    } catch (e: Exception) {
+                        // Direct in-memory invocation already applied
+                    }
                 }
                 result.success(true)
             }
@@ -157,9 +185,15 @@ class TaplyMethodChannel(private val context: Context) : MethodChannel.MethodCal
             "getInstalledApps" -> {
                 val includeIcons = call.argument<Boolean>("includeIcons") ?: true
                 Thread {
-                    val apps = appManager.getInstalledApps(includeIcons)
-                    android.os.Handler(android.os.Looper.getMainLooper()).post {
-                        result.success(apps)
+                    try {
+                        val apps = appManager.getInstalledApps(includeIcons)
+                        android.os.Handler(android.os.Looper.getMainLooper()).post {
+                            result.success(apps)
+                        }
+                    } catch (e: Exception) {
+                        android.os.Handler(android.os.Looper.getMainLooper()).post {
+                            result.success(emptyList<Map<String, Any?>>())
+                        }
                     }
                 }.start()
             }

@@ -20,13 +20,41 @@ class SystemController(private val context: Context) {
 
     companion object {
         private const val TAG = "TaplySystemController"
+        @Volatile
+        var isTorchOn: Boolean = false
+        @Volatile
+        var torchCameraId: String? = null
+        private var isTorchCallbackRegistered = false
+        private val torchListeners = mutableSetOf<(Boolean) -> Unit>()
+
+        fun addTorchListener(listener: (Boolean) -> Unit) {
+            synchronized(torchListeners) {
+                torchListeners.add(listener)
+            }
+            listener(isTorchOn)
+        }
+
+        fun removeTorchListener(listener: (Boolean) -> Unit) {
+            synchronized(torchListeners) {
+                torchListeners.remove(listener)
+            }
+        }
+
+        fun notifyTorchChanged(enabled: Boolean) {
+            isTorchOn = enabled
+            val listenersCopy = synchronized(torchListeners) { torchListeners.toList() }
+            for (listener in listenersCopy) {
+                try {
+                    listener(enabled)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Error in torch listener", e)
+                }
+            }
+        }
     }
 
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
     private val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as? CameraManager
-
-    private var isTorchOn = false
-    private var torchCameraId: String? = null
 
     init {
         initTorch()
@@ -156,6 +184,22 @@ class SystemController(private val context: Context) {
                     break
                 }
             }
+            if (!isTorchCallbackRegistered && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                cm.registerTorchCallback(object : CameraManager.TorchCallback() {
+                    override fun onTorchModeChanged(cameraId: String, enabled: Boolean) {
+                        if (cameraId == torchCameraId || torchCameraId == null) {
+                            notifyTorchChanged(enabled)
+                        }
+                    }
+
+                    override fun onTorchModeUnavailable(cameraId: String) {
+                        if (cameraId == torchCameraId) {
+                            notifyTorchChanged(false)
+                        }
+                    }
+                }, android.os.Handler(android.os.Looper.getMainLooper()))
+                isTorchCallbackRegistered = true
+            }
         } catch (e: Exception) {
             Log.w(TAG, "Could not initialize torch camera", e)
         }
@@ -166,16 +210,15 @@ class SystemController(private val context: Context) {
         val camId = torchCameraId ?: return false
 
         return try {
-            isTorchOn = !isTorchOn
-            cm.setTorchMode(camId, isTorchOn)
-            isTorchOn
-        } catch (e: CameraAccessException) {
-            Log.e(TAG, "Camera access error toggling torch", e)
-            isTorchOn = false
-            false
+            val target = !isTorchOn
+            cm.setTorchMode(camId, target)
+            isTorchOn = target
+            notifyTorchChanged(target)
+            target
         } catch (e: Exception) {
-            Log.e(TAG, "General error toggling torch", e)
+            Log.e(TAG, "Error toggling torch", e)
             isTorchOn = false
+            notifyTorchChanged(false)
             false
         }
     }
@@ -188,10 +231,12 @@ class SystemController(private val context: Context) {
         return try {
             isTorchOn = enabled
             cm.setTorchMode(camId, enabled)
+            notifyTorchChanged(enabled)
             true
         } catch (e: Exception) {
             Log.e(TAG, "Error setting torch mode", e)
             isTorchOn = false
+            notifyTorchChanged(false)
             false
         }
     }
@@ -287,6 +332,7 @@ class SystemController(private val context: Context) {
             "sound" -> Settings.ACTION_SOUND_SETTINGS
             "date" -> Settings.ACTION_DATE_SETTINGS
             "security" -> Settings.ACTION_SECURITY_SETTINGS
+            "storage" -> Settings.ACTION_INTERNAL_STORAGE_SETTINGS
             else -> Settings.ACTION_SETTINGS
         }
 

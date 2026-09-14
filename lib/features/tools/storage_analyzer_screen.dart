@@ -48,12 +48,16 @@ class _StorageAnalyzerScreenState extends State<StorageAnalyzerScreen> {
   @override
   Widget build(BuildContext context) {
     final totalBytes =
-        _storageData?['totalBytes'] as int? ?? (64 * 1024 * 1024 * 1024);
+        (_storageData?['totalBytes'] as num?)?.toInt() ??
+        (64 * 1024 * 1024 * 1024);
     final freeBytes =
-        _storageData?['freeBytes'] as int? ?? (24 * 1024 * 1024 * 1024);
+        (_storageData?['freeBytes'] as num?)?.toInt() ??
+        (24 * 1024 * 1024 * 1024);
     final usedBytes =
-        _storageData?['usedBytes'] as int? ?? (totalBytes - freeBytes);
-    final usedPct = _storageData?['usedPercentage'] as int? ?? 62;
+        (_storageData?['usedBytes'] as num?)?.toInt() ??
+        (totalBytes - freeBytes);
+    final usedPct =
+        (_storageData?['usedPercentage'] as num?)?.toDouble() ?? 62.0;
     final dataDir = _storageData?['dataDirectory'] as String? ?? '/data';
 
     Color storageColor = AppColors.primary;
@@ -132,7 +136,7 @@ class _StorageAnalyzerScreenState extends State<StorageAnalyzerScreen> {
                               ),
                             ),
                             Text(
-                              '$usedPct%',
+                              '${usedPct.toInt()}%',
                               style: context.textTheme.headlineMedium?.copyWith(
                                 fontWeight: FontWeight.w800,
                                 color: storageColor,

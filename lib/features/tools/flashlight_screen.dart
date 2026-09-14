@@ -1,20 +1,22 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/services/native_bridge.dart';
+import '../../core/services/providers.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/utils/extensions.dart';
 
-class FlashlightScreen extends StatefulWidget {
+class FlashlightScreen extends ConsumerStatefulWidget {
   const FlashlightScreen({super.key});
 
   @override
-  State<FlashlightScreen> createState() => _FlashlightScreenState();
+  ConsumerState<FlashlightScreen> createState() => _FlashlightScreenState();
 }
 
-class _FlashlightScreenState extends State<FlashlightScreen>
+class _FlashlightScreenState extends ConsumerState<FlashlightScreen>
     with WidgetsBindingObserver {
   bool _isOn = false;
   bool _isScreenLight = false;
@@ -89,19 +91,21 @@ class _FlashlightScreenState extends State<FlashlightScreen>
       _stopStrobe();
       setState(() => _strobeFrequency = 0.0);
     }
-    final nextState = !_isOn;
-    final ok = await NativeBridge.instance.setTorch(nextState);
+    final newState = await ref.read(flashlightProvider.notifier).toggle();
     if (!mounted) return;
-    if (ok) {
-      setState(() => _isOn = nextState);
-      context.showSnackBar(
-        _isOn ? 'Flashlight enabled' : 'Flashlight turned off',
-      );
-    }
+    setState(() => _isOn = newState);
+    context.showSnackBar(
+      newState ? 'Flashlight enabled' : 'Flashlight turned off',
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final torchFromProvider = ref.watch(flashlightProvider);
+    if (_strobeFrequency <= 0.0) {
+      _isOn = torchFromProvider;
+    }
+
     if (_isScreenLight) {
       return Scaffold(
         backgroundColor: Colors.white,

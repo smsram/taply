@@ -255,6 +255,7 @@ class AppsNotifier extends AsyncNotifier<List<InstalledApp>> {
     state = const AsyncLoading();
     final service = ref.read(appServiceProvider);
     state = AsyncData(await service.getInstalledApps());
+    state = AsyncData(await service.getInstalledApps(forceRefresh: true));
   }
 
   Future<void> toggleFavorite(String packageName) async {
@@ -394,3 +395,51 @@ final permissionsProvider =
     AsyncNotifierProvider<PermissionsNotifier, List<PermissionItem>>(() {
       return PermissionsNotifier();
     });
+
+// Real-time Flashlight Notifier
+class FlashlightNotifier extends Notifier<bool> {
+  void Function(bool)? _listener;
+
+  @override
+  bool build() {
+    _listener = (enabled) {
+      state = enabled;
+    };
+    NativeBridge.instance.addTorchListener(_listener!);
+    ref.onDispose(() {
+      if (_listener != null) {
+        NativeBridge.instance.removeTorchListener(_listener!);
+      }
+    });
+
+    _syncState();
+    return false;
+  }
+
+  Future<void> _syncState() async {
+    final isOn = await NativeBridge.instance.isFlashlightOn();
+    state = isOn;
+  }
+
+  Future<void> refresh() async {
+    await _syncState();
+  }
+
+  Future<bool> toggle() async {
+    final newState = await NativeBridge.instance.toggleFlashlight();
+    state = newState;
+    return newState;
+  }
+
+  Future<void> setTorch(bool on) async {
+    final current = state;
+    if (current != on) {
+      final newState = await NativeBridge.instance.toggleFlashlight();
+      state = newState;
+    }
+  }
+}
+
+final flashlightProvider = NotifierProvider<FlashlightNotifier, bool>(() {
+  return FlashlightNotifier();
+});

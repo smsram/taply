@@ -33,8 +33,7 @@ class _QuickControlsScreenState extends ConsumerState<QuickControlsScreen>
   double _brightness = 0.65;
   bool _autoBrightness = true;
 
-  // Flashlight & Connectivity states
-  bool _isTorchOn = false;
+  // Media & Connectivity states
   bool _isPlayingMedia = false;
   bool _hasMediaSession = false;
   Map<String, dynamic> _connectivity = {};
@@ -62,9 +61,9 @@ class _QuickControlsScreenState extends ConsumerState<QuickControlsScreen>
   Future<void> _fetchLiveDeviceState() async {
     final vol = await NativeBridge.instance.getVolumeLevels();
     final bri = await NativeBridge.instance.getBrightness();
-    final torch = await NativeBridge.instance.isFlashlightOn();
     final media = await NativeBridge.instance.getMediaStatus();
     final conn = await NativeBridge.instance.getConnectivityStatus();
+    ref.read(flashlightProvider.notifier).refresh();
 
     if (mounted) {
       setState(() {
@@ -72,8 +71,7 @@ class _QuickControlsScreenState extends ConsumerState<QuickControlsScreen>
         _ringVolume = (vol['ringVolume'] as num?)?.toDouble() ?? 0.8;
         _alarmVolume = (vol['alarmVolume'] as num?)?.toDouble() ?? 0.8;
         _soundMode = vol['ringerMode']?.toString() ?? 'Normal';
-        _brightness = bri.clamp(0.05, 1.0);
-        _isTorchOn = torch;
+        _brightness = bri.clamp(0.0, 1.0);
         _isPlayingMedia = media['isPlaying'] as bool? ?? false;
         _hasMediaSession =
             (media['hasActiveSession'] as bool? ?? false) || _isPlayingMedia;
@@ -100,18 +98,16 @@ class _QuickControlsScreenState extends ConsumerState<QuickControlsScreen>
 
   Future<void> _toggleFlashlight() async {
     _triggerHaptic();
-    final ok = await NativeBridge.instance.toggleFlashlight();
+    final newState = await ref.read(flashlightProvider.notifier).toggle();
     if (!mounted) return;
-    if (ok) {
-      setState(() => _isTorchOn = !_isTorchOn);
-      context.showSnackBar(
-        _isTorchOn ? 'Flashlight enabled' : 'Flashlight turned off',
-      );
-    }
+    context.showSnackBar(
+      newState ? 'Flashlight enabled' : 'Flashlight turned off',
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final isTorchOn = ref.watch(flashlightProvider);
     return Scaffold(
       appBar: AppBar(title: const Text('Quick Controls')),
       body: ListView(
@@ -171,11 +167,11 @@ class _QuickControlsScreenState extends ConsumerState<QuickControlsScreen>
                     ),
                   ),
                   ActionTile(
-                    title: _isTorchOn ? 'Flashlight On' : 'Flashlight',
-                    icon: _isTorchOn
+                    title: isTorchOn ? 'Flashlight On' : 'Flashlight',
+                    icon: isTorchOn
                         ? Icons.flashlight_on_rounded
                         : Icons.flashlight_off_rounded,
-                    iconColor: _isTorchOn
+                    iconColor: isTorchOn
                         ? AppColors.accent
                         : AppColors.secondary,
                     onTap: _toggleFlashlight,

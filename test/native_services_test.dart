@@ -75,6 +75,8 @@ class TestStorageService implements IStorageService {
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   group('NativeBridge Utility & Decoding Tests', () {
     test('decodeBase64Icon decodes valid base64 bytes correctly', () {
       final sampleBytes = Uint8List.fromList([

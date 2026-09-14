@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/constants/app_constants.dart';
+import 'core/localization/app_localizations.dart';
 import 'core/routing/app_router.dart';
 import 'core/services/native_bridge.dart';
 import 'core/services/providers.dart';
@@ -71,6 +73,8 @@ class TaplyApp extends ConsumerWidget {
         break;
     }
 
+    final selectedLocale = AppLocalizations.parseLocale(settings.language);
+
     return MaterialApp.router(
       title: AppConstants.appDisplayName,
       debugShowCheckedModeBanner: false,
@@ -78,6 +82,14 @@ class TaplyApp extends ConsumerWidget {
       theme: lightTheme,
       darkTheme: darkTheme,
       themeMode: themeMode,
+      locale: selectedLocale,
+      supportedLocales: AppLocalizations.supportedLocales,
+      localizationsDelegates: const [
+        AppLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
     );
   }
 }

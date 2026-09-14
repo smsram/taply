@@ -17,16 +17,12 @@ class QRToolScreen extends StatefulWidget {
 }
 
 class _QRToolScreenState extends State<QRToolScreen>
-    with TickerProviderStateMixin, WidgetsBindingObserver {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late TabController _tabController;
-  late AnimationController _laserAnimController;
-  late Animation<double> _laserAnimation;
   MobileScannerController? _scannerController;
   bool _isScanning = true;
 
-  final TextEditingController _qrTextController = TextEditingController(
-    text: 'https://taply.app',
-  );
+  final TextEditingController _qrTextController = TextEditingController();
 
   bool _isTorchOn = false;
   Color _qrColor = Colors.black;
@@ -41,13 +37,6 @@ class _QRToolScreenState extends State<QRToolScreen>
       detectionSpeed: DetectionSpeed.noDuplicates,
       facing: CameraFacing.back,
       torchEnabled: false,
-    );
-    _laserAnimController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 2000),
-    )..repeat(reverse: true);
-    _laserAnimation = Tween<double>(begin: 0.05, end: 0.95).animate(
-      CurvedAnimation(parent: _laserAnimController, curve: Curves.easeInOut),
     );
   }
 
@@ -77,7 +66,6 @@ class _QRToolScreenState extends State<QRToolScreen>
     WidgetsBinding.instance.removeObserver(this);
     _tabController.removeListener(_handleTabChange);
     _tabController.dispose();
-    _laserAnimController.dispose();
     _qrTextController.dispose();
     _scannerController?.dispose();
     if (_isTorchOn) {
@@ -106,43 +94,38 @@ class _QRToolScreenState extends State<QRToolScreen>
 
   void _onScanResult(String data) {
     HapticFeedback.mediumImpact();
-    showModalBottomSheet<void>(
+    final isUrl = data.startsWith('http://') || data.startsWith('https://');
+
+    showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(AppSpacing.radiusLg),
-        ),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (context) {
-        final isUrl = data.startsWith('http://') || data.startsWith('https://');
         return Padding(
-          padding: EdgeInsets.fromLTRB(
-            AppSpacing.base,
-            AppSpacing.base,
-            AppSpacing.base,
-            MediaQuery.of(context).padding.bottom + AppSpacing.base,
-          ),
+          padding: const EdgeInsets.all(AppSpacing.base),
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: AppColors.success.withOpacity(0.12),
+                      color: AppColors.primary.withOpacity(0.12),
                       shape: BoxShape.circle,
                     ),
                     child: const Icon(
-                      Icons.check_circle_rounded,
-                      color: AppColors.success,
+                      Icons.qr_code_2_rounded,
+                      color: AppColors.primary,
                     ),
                   ),
                   const SizedBox(width: AppSpacing.md),
                   Expanded(
                     child: Text(
-                      'QR Code Detected',
+                      isUrl ? 'Scanned URL Link' : 'Scanned Text Content',
                       style: context.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w700,
                       ),
@@ -304,31 +287,6 @@ class _QRToolScreenState extends State<QRToolScreen>
                         },
                       ),
 
-                    // Animated Scanning Laser Bar
-                    AnimatedBuilder(
-                      animation: _laserAnimation,
-                      builder: (context, child) {
-                        return Positioned(
-                          top: 280 * _laserAnimation.value,
-                          left: 16,
-                          right: 16,
-                          child: Container(
-                            height: 2.5,
-                            decoration: BoxDecoration(
-                              color: AppColors.primary,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: AppColors.primary.withOpacity(0.8),
-                                  blurRadius: 8,
-                                  spreadRadius: 2,
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-
                     // Bottom HUD Status
                     Positioned(
                       bottom: 12,
@@ -367,40 +325,32 @@ class _QRToolScreenState extends State<QRToolScreen>
             ),
           ),
         ),
+        const SizedBox(height: AppSpacing.md),
         Padding(
-          padding: const EdgeInsets.all(AppSpacing.base),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.base),
           child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () => _scannerController?.switchCamera(),
-                  icon: const Icon(Icons.flip_camera_ios_rounded),
-                  label: const Text('Switch Camera'),
+              FloatingActionButton.extended(
+                heroTag: 'scanner_torch',
+                onPressed: _toggleTorch,
+                icon: Icon(
+                  _isTorchOn
+                      ? Icons.flashlight_on_rounded
+                      : Icons.flashlight_off_rounded,
                 ),
-              ),
-              const SizedBox(width: AppSpacing.md),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _toggleTorch,
-                  icon: Icon(
-                    _isTorchOn
-                        ? Icons.flashlight_on_rounded
-                        : Icons.flashlight_off_rounded,
-                    color: _isTorchOn ? AppColors.accent : null,
-                  ),
-                  label: Text(_isTorchOn ? 'Torch On' : 'Torch Off'),
-                ),
+                label: Text(_isTorchOn ? 'Torch On' : 'Torch Off'),
               ),
             ],
           ),
         ),
+        const SizedBox(height: AppSpacing.lg),
       ],
     );
   }
 
   Widget _buildGeneratorTab(BuildContext context) {
     final text = _qrTextController.text.trim();
-    final effectiveText = text.isEmpty ? 'https://taply.app' : text;
 
     return ListView(
       padding: const EdgeInsets.all(AppSpacing.base),
@@ -409,7 +359,7 @@ class _QRToolScreenState extends State<QRToolScreen>
           controller: _qrTextController,
           decoration: InputDecoration(
             labelText: 'Text or URL',
-            hintText: 'Enter link or text to generate QR...',
+            hintText: 'Enter text, URL, Wi-Fi or phone number...',
             suffixIcon: _qrTextController.text.isNotEmpty
                 ? IconButton(
                     icon: const Icon(Icons.clear_rounded),
@@ -427,7 +377,9 @@ class _QRToolScreenState extends State<QRToolScreen>
         // QR Matrix Visualizer Container
         Center(
           child: Container(
-            padding: const EdgeInsets.all(AppSpacing.lg),
+            width: 250,
+            height: 250,
+            padding: const EdgeInsets.all(AppSpacing.base),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(20),
@@ -440,36 +392,55 @@ class _QRToolScreenState extends State<QRToolScreen>
                 ),
               ],
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(
-                  width: 200,
-                  height: 200,
-                  child: CustomPaint(
-                    painter: QrMatrixPainter(
-                      data: effectiveText,
-                      moduleColor: _qrColor,
-                    ),
+            child: text.isEmpty
+                ? Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.qr_code_2_rounded,
+                        size: 64,
+                        color: Colors.grey.shade400,
+                      ),
+                      const SizedBox(height: AppSpacing.sm),
+                      Text(
+                        'Enter text or link above to generate QR code',
+                        style: context.textTheme.bodySmall?.copyWith(
+                          color: Colors.grey.shade600,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  )
+                : Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      SizedBox(
+                        width: 175,
+                        height: 175,
+                        child: CustomPaint(
+                          painter: QrMatrixPainter(
+                            data: text,
+                            moduleColor: _qrColor,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.xs),
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 220),
+                        child: Text(
+                          text,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Colors.black87,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-                const SizedBox(height: AppSpacing.md),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 220),
-                  child: Text(
-                    effectiveText,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Colors.black87,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              ],
-            ),
           ),
         ),
         const SizedBox(height: AppSpacing.lg),
@@ -496,10 +467,12 @@ class _QRToolScreenState extends State<QRToolScreen>
           children: [
             Expanded(
               child: OutlinedButton.icon(
-                onPressed: () {
-                  Clipboard.setData(ClipboardData(text: effectiveText));
-                  context.showSnackBar('QR link copied to clipboard');
-                },
+                onPressed: text.isNotEmpty
+                    ? () {
+                        Clipboard.setData(ClipboardData(text: text));
+                        context.showSnackBar('QR content copied to clipboard');
+                      }
+                    : null,
                 icon: const Icon(Icons.copy_rounded, size: 18),
                 label: const Text('Copy Content'),
               ),
@@ -507,12 +480,14 @@ class _QRToolScreenState extends State<QRToolScreen>
             const SizedBox(width: AppSpacing.md),
             Expanded(
               child: ElevatedButton.icon(
-                onPressed: () {
-                  HapticFeedback.lightImpact();
-                  context.showSnackBar(
-                    'QR Code generated and saved to device memory',
-                  );
-                },
+                onPressed: text.isNotEmpty
+                    ? () {
+                        HapticFeedback.lightImpact();
+                        context.showSnackBar(
+                          'QR Code generated and saved to device memory',
+                        );
+                      }
+                    : null,
                 icon: const Icon(Icons.download_rounded, size: 18),
                 label: const Text('Save Image'),
               ),

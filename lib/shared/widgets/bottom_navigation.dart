@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../core/utils/extensions.dart';
+
 class TaplyBottomNavigation extends StatelessWidget {
   final int currentIndex;
   final ValueChanged<int> onDestinationSelected;
@@ -12,34 +14,35 @@ class TaplyBottomNavigation extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final loc = context.loc;
     return NavigationBar(
       selectedIndex: currentIndex,
       onDestinationSelected: onDestinationSelected,
-      destinations: const [
+      destinations: [
         NavigationDestination(
-          icon: Icon(Icons.home_outlined),
-          selectedIcon: Icon(Icons.home_rounded),
-          label: 'Home',
+          icon: const Icon(Icons.home_outlined),
+          selectedIcon: const Icon(Icons.home_rounded),
+          label: loc.home,
         ),
         NavigationDestination(
-          icon: Icon(Icons.apps_outlined),
-          selectedIcon: Icon(Icons.apps_rounded),
-          label: 'Apps',
+          icon: const Icon(Icons.apps_outlined),
+          selectedIcon: const Icon(Icons.apps_rounded),
+          label: loc.apps,
         ),
         NavigationDestination(
-          icon: Icon(Icons.handyman_outlined),
-          selectedIcon: Icon(Icons.handyman_rounded),
-          label: 'Tools',
+          icon: const Icon(Icons.handyman_outlined),
+          selectedIcon: const Icon(Icons.handyman_rounded),
+          label: loc.tools,
         ),
         NavigationDestination(
-          icon: Icon(Icons.palette_outlined),
-          selectedIcon: Icon(Icons.palette_rounded),
-          label: 'Customize',
+          icon: const Icon(Icons.palette_outlined),
+          selectedIcon: const Icon(Icons.palette_rounded),
+          label: loc.customize,
         ),
         NavigationDestination(
-          icon: Icon(Icons.settings_outlined),
-          selectedIcon: Icon(Icons.settings_rounded),
-          label: 'Settings',
+          icon: const Icon(Icons.settings_outlined),
+          selectedIcon: const Icon(Icons.settings_rounded),
+          label: loc.settings,
         ),
       ],
     );

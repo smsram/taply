@@ -13,6 +13,7 @@ import '../../core/services/system_action_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/utils/extensions.dart';
+import '../../shared/models/system_action_catalog.dart';
 import '../../shared/widgets/app_icon.dart';
 
 /// The signature Floating Taply Panel.
@@ -35,7 +36,6 @@ class _FloatingPanelScreenState extends ConsumerState<FloatingPanelScreen>
   // Draggable panel offset
   Offset _panelOffset = Offset.zero;
   bool _isDragging = false;
-  bool _isTorchActive = false;
 
   // Multi-page carousel state (0: Actions, 1: Apps, 2: Tools, 3: Controls)
   int _currentTab = 0;
@@ -71,6 +71,9 @@ class _FloatingPanelScreenState extends ConsumerState<FloatingPanelScreen>
   double _mediaVolume = 0.7;
   double _brightness = 0.65;
   String _soundMode = 'Normal';
+  bool _isWifi = false;
+  bool _isBluetooth = false;
+  bool _isAirplane = false;
 
   @override
   void initState() {
@@ -92,21 +95,33 @@ class _FloatingPanelScreenState extends ConsumerState<FloatingPanelScreen>
   }
 
   Future<void> _initDeviceState() async {
-    final torch = await NativeBridge.instance.isFlashlightOn();
+    ref.read(flashlightProvider.notifier).refresh();
     final vol = await NativeBridge.instance.getVolumeLevels();
     final bri = await NativeBridge.instance.getBrightness();
+    final conn = await NativeBridge.instance.getConnectivityStatus();
     final storage = ref.read(storageServiceProvider);
     final savedNotes = storage.getString('taply_quick_note') ?? '';
 
     if (mounted) {
       setState(() {
-        _isTorchActive = torch;
         _mediaVolume = (vol['mediaVolume'] as num?)?.toDouble() ?? 0.7;
         _soundMode = vol['ringerMode']?.toString() ?? 'Normal';
         _brightness = bri.clamp(0.0, 1.0);
         _notesController.text = savedNotes;
+        _isWifi = conn['wifi'] as bool? ?? false;
+        _isBluetooth = conn['bluetooth'] as bool? ?? false;
+        _isAirplane = conn['airplaneMode'] as bool? ?? false;
       });
     }
+  }
+
+  void _openInPanelTool(String toolId) {
+    setState(() {
+      _activeInPanelTool = toolId;
+      if (toolId == 'compass') {
+        _startInPanelCompass();
+      }
+    });
   }
 
   void _startInPanelCompass() {
@@ -150,11 +165,8 @@ class _FloatingPanelScreenState extends ConsumerState<FloatingPanelScreen>
   Future<void> _closePanel() async {
     _stopInPanelCompass();
     await _animController.reverse();
-    if (mounted) {
+    if (mounted && context.canPop()) {
       context.pop();
-      if (Navigator.of(context).canPop()) {
-        Navigator.of(context).pop();
-      }
     }
   }
 
@@ -421,7 +433,15 @@ class _FloatingPanelScreenState extends ConsumerState<FloatingPanelScreen>
       case 'notes':
         return 'Quick Notes';
       case 'compass':
-        return 'Compass';
+        return 'Digital Compass';
+      case 'battery':
+        return 'Battery Diagnostics';
+      case 'storage':
+        return 'Storage Analyzer';
+      case 'device_info':
+        return 'Device Telemetry';
+      case 'magnifier':
+        return 'Screen Magnifier';
       default:
         return 'Tool';
     }
@@ -502,70 +522,92 @@ class _FloatingPanelScreenState extends ConsumerState<FloatingPanelScreen>
 
   // Page 0: Actions
   Widget _buildActionsPage() {
-    final actions = [
-      _PanelAction(
-        title: 'Back',
-        icon: Icons.arrow_back_rounded,
-        color: AppColors.primary,
-        onTap: () => _executeAction(SystemActionType.back, 'Back pressed'),
-      ),
-      _PanelAction(
-        title: 'Home',
-        icon: Icons.home_rounded,
-        color: AppColors.primary,
-        onTap: () => _executeAction(SystemActionType.home, 'Home pressed'),
-      ),
-      _PanelAction(
-        title: 'Recents',
-        icon: Icons.view_carousel_rounded,
-        color: AppColors.primary,
-        onTap: () => _executeAction(SystemActionType.recentApps, 'Recent apps'),
-      ),
-      _PanelAction(
-        title: 'Screenshot',
-        icon: Icons.screenshot_rounded,
-        color: AppColors.secondary,
-        onTap: () {
-          _executeAction(SystemActionType.screenshot, 'Taking screenshot...');
-          _closePanel();
-        },
-      ),
-      _PanelAction(
-        title: 'Lock Screen',
-        icon: Icons.lock_outline_rounded,
-        color: AppColors.error,
-        onTap: () {
-          _executeAction(SystemActionType.lockScreen, 'Screen locked');
-          _closePanel();
-        },
-      ),
-      _PanelAction(
-        title: 'Volume',
-        icon: Icons.volume_up_rounded,
-        color: const Color(0xFF8B5CF6),
-        onTap: () => _pageController.jumpToPage(3),
-      ),
-      _PanelAction(
-        title: 'Brightness',
-        icon: Icons.brightness_6_rounded,
-        color: AppColors.accent,
-        onTap: () => _pageController.jumpToPage(3),
-      ),
-      _PanelAction(
-        title: _isTorchActive ? 'Torch On' : 'Torch',
-        icon: _isTorchActive
+    final panelConfig = ref.watch(settingsProvider).panelConfig;
+    final isTorchOn = ref.watch(flashlightProvider);
+    final rawOrder = panelConfig.actionOrder.isNotEmpty
+        ? panelConfig.actionOrder
+        : const [
+            'back',
+            'home',
+            'recent_apps',
+            'screenshot',
+            'lock_screen',
+            'volume',
+            'brightness',
+            'flashlight',
+          ];
+
+    final actions = rawOrder.map((actionId) {
+      final meta = SystemActionCatalog.getAction(actionId);
+
+      IconData icon = meta.icon;
+      String title = meta.title;
+      Color color = meta.color;
+
+      if (meta.id == 'flashlight') {
+        title = isTorchOn ? 'Torch On' : 'Torch';
+        icon = isTorchOn
             ? Icons.flashlight_on_rounded
-            : Icons.flashlight_off_rounded,
-        color: _isTorchActive ? AppColors.accent : AppColors.secondary,
-        onTap: () async {
-          _triggerHaptic();
-          final ok = await NativeBridge.instance.toggleFlashlight();
-          if (ok) {
-            setState(() => _isTorchActive = !_isTorchActive);
+            : Icons.flashlight_off_rounded;
+        color = isTorchOn ? AppColors.accent : AppColors.secondary;
+      }
+
+      VoidCallback onTap;
+      switch (meta.id) {
+        case 'volume':
+        case 'brightness':
+          onTap = () => _pageController.jumpToPage(3);
+          break;
+        case 'flashlight':
+          onTap = () async {
+            _triggerHaptic();
+            await ref.read(flashlightProvider.notifier).toggle();
+          };
+          break;
+        case 'screenshot':
+          onTap = () {
+            _executeAction(SystemActionType.screenshot, 'Taking screenshot...');
+            if (panelConfig.closeOnAction) _closePanel();
+          };
+          break;
+        case 'lock_screen':
+          onTap = () {
+            _executeAction(SystemActionType.lockScreen, 'Screen locked');
+            if (panelConfig.closeOnAction) _closePanel();
+          };
+          break;
+        case 'calculator':
+        case 'timer':
+        case 'stopwatch':
+        case 'notes':
+        case 'compass':
+        case 'battery':
+        case 'storage':
+        case 'device_info':
+        case 'magnifier':
+          onTap = () => _openInPanelTool(meta.id);
+          break;
+        default:
+          if (meta.toolRoute != null) {
+            onTap = () {
+              if (panelConfig.closeOnAction) _closePanel();
+              context.push(meta.toolRoute!);
+            };
+          } else if (meta.systemAction != null) {
+            onTap = () {
+              _executeAction(meta.systemAction!, '${meta.title} executed');
+              if (panelConfig.closeOnAction &&
+                  (meta.id == 'home' || meta.id == 'back')) {
+                _closePanel();
+              }
+            };
+          } else {
+            onTap = () {};
           }
-        },
-      ),
-    ];
+      }
+
+      return _PanelAction(title: title, icon: icon, color: color, onTap: onTap);
+    }).toList();
 
     return SingleChildScrollView(
       physics: const ClampingScrollPhysics(),
@@ -846,6 +888,7 @@ class _FloatingPanelScreenState extends ConsumerState<FloatingPanelScreen>
               } else if (toolId == 'device_info') {
                 _closePanel();
                 context.push('/tools/device-info');
+                ref.read(flashlightProvider.notifier).toggle();
               } else {
                 // Host tool inside floating panel
                 setState(() {
@@ -974,7 +1017,119 @@ class _FloatingPanelScreenState extends ConsumerState<FloatingPanelScreen>
               NativeBridge.instance.setSoundMode(s.first);
             },
           ),
+          const SizedBox(height: 12),
+          const Divider(),
+          const SizedBox(height: 6),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'CONNECTIVITY & RADIOS',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.5,
+                color: context.isDarkMode
+                    ? AppColors.darkSecondaryText
+                    : AppColors.secondaryText,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              _buildConnectivityPill(
+                icon: Icons.wifi_rounded,
+                label: 'Wi-Fi',
+                isActive: _isWifi,
+                onTap: () {
+                  NativeBridge.instance.openSystemSetting('wifi');
+                },
+              ),
+              const SizedBox(width: 6),
+              _buildConnectivityPill(
+                icon: Icons.bluetooth_rounded,
+                label: 'Bluetooth',
+                isActive: _isBluetooth,
+                onTap: () {
+                  NativeBridge.instance.openSystemSetting('bluetooth');
+                },
+              ),
+              const SizedBox(width: 6),
+              _buildConnectivityPill(
+                icon: Icons.airplanemode_active_rounded,
+                label: 'Airplane',
+                isActive: _isAirplane,
+                onTap: () {
+                  NativeBridge.instance.openSystemSetting('airplane');
+                },
+              ),
+              const SizedBox(width: 6),
+              _buildConnectivityPill(
+                icon: ref.watch(flashlightProvider)
+                    ? Icons.flashlight_on_rounded
+                    : Icons.flashlight_off_rounded,
+                label: 'Torch',
+                isActive: ref.watch(flashlightProvider),
+                onTap: () async {
+                  _triggerHaptic();
+                  await ref.read(flashlightProvider.notifier).toggle();
+                },
+              ),
+            ],
+          ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildConnectivityPill({
+    required IconData icon,
+    required String label,
+    required bool isActive,
+    required VoidCallback onTap,
+  }) {
+    return Expanded(
+      child: InkWell(
+        onTap: () {
+          _triggerHaptic();
+          onTap();
+        },
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: isActive
+                ? AppColors.primary.withOpacity(0.18)
+                : (context.isDarkMode
+                      ? Colors.white.withOpacity(0.06)
+                      : const Color(0xFFF1F5F9)),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: isActive
+                  ? AppColors.primary
+                  : (context.isDarkMode ? Colors.white12 : Colors.black12),
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 18,
+                color: isActive ? AppColors.primary : Colors.grey,
+              ),
+              const SizedBox(height: 3),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+                  color: isActive ? AppColors.primary : Colors.grey,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -993,6 +1148,14 @@ class _FloatingPanelScreenState extends ConsumerState<FloatingPanelScreen>
         return _buildInPanelNotes(height);
       case 'compass':
         return _buildInPanelCompass(height);
+      case 'battery':
+        return _buildInPanelBattery(height);
+      case 'storage':
+        return _buildInPanelStorage(height);
+      case 'device_info':
+        return _buildInPanelDeviceInfo(height);
+      case 'magnifier':
+        return _buildInPanelMagnifier(height);
       default:
         return SizedBox(height: height);
     }
@@ -1525,6 +1688,436 @@ class _FloatingPanelScreenState extends ConsumerState<FloatingPanelScreen>
           ],
         ),
       ),
+    );
+  }
+
+  // 6. In-Panel Battery Diagnostics
+  Widget _buildInPanelBattery(double height) {
+    return FutureBuilder<Map<String, dynamic>>(
+      future: NativeBridge.instance.getBatteryDiagnostics(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return SizedBox(
+            height: height,
+            child: const Center(
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          );
+        }
+        final data = snapshot.data!;
+        final level = (data['level'] as num?)?.toInt() ?? -1;
+        final isCharging = data['isCharging'] as bool? ?? false;
+        final health = data['health']?.toString() ?? 'Good';
+        final temp = (data['temperature'] as num?)?.toDouble() ?? 0.0;
+        final voltage = (data['voltage'] as num?)?.toInt() ?? 0;
+        final plugType =
+            data['plugType']?.toString() ?? (isCharging ? 'AC/USB' : 'Battery');
+
+        return Container(
+          height: height,
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.sm,
+            vertical: 4,
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        isCharging
+                            ? Icons.battery_charging_full_rounded
+                            : Icons.battery_full_rounded,
+                        size: 32,
+                        color: level > 20 ? AppColors.success : AppColors.error,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        level >= 0 ? '$level%' : 'N/A',
+                        style: const TextStyle(
+                          fontSize: 26,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: isCharging
+                          ? AppColors.success.withOpacity(0.15)
+                          : Colors.grey.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      isCharging ? '⚡ $plugType' : 'On Battery',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: isCharging ? AppColors.success : null,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: level >= 0 ? (level / 100.0).clamp(0.0, 1.0) : 0.5,
+                  minHeight: 8,
+                  backgroundColor: Colors.grey.withOpacity(0.2),
+                  color: level > 20 ? AppColors.success : AppColors.error,
+                ),
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _buildInPanelStatTile('Health', health),
+                  _buildInPanelStatTile(
+                    'Temp',
+                    temp > 0 ? '${temp.toStringAsFixed(1)}°C' : 'N/A',
+                  ),
+                  _buildInPanelStatTile(
+                    'Voltage',
+                    voltage > 0 ? '${voltage}mV' : 'N/A',
+                  ),
+                ],
+              ),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                      ),
+                      onPressed: () =>
+                          NativeBridge.instance.requestPermission('battery'),
+                      child: const Text(
+                        'Battery Settings',
+                        style: TextStyle(fontSize: 11),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                      ),
+                      onPressed: () {
+                        _closePanel();
+                        context.push('/tools/battery-diagnostics');
+                      },
+                      child: const Text(
+                        'Full Diagnostics',
+                        style: TextStyle(fontSize: 11),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // 7. In-Panel Storage Analyzer
+  Widget _buildInPanelStorage(double height) {
+    return FutureBuilder<Map<String, dynamic>>(
+      future: NativeBridge.instance.getStorageDiagnostics(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return SizedBox(
+            height: height,
+            child: const Center(
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          );
+        }
+        final data = snapshot.data!;
+        final totalBytes =
+            (data['totalBytes'] as num?)?.toInt() ?? (64 * 1024 * 1024 * 1024);
+        final freeBytes =
+            (data['freeBytes'] as num?)?.toInt() ?? (24 * 1024 * 1024 * 1024);
+        final usedBytes =
+            (data['usedBytes'] as num?)?.toInt() ?? (totalBytes - freeBytes);
+        final usedPct = (data['usedPercentage'] as num?)?.toDouble() ?? 50.0;
+
+        String fmt(int b) =>
+            '${(b / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+
+        return Container(
+          height: height,
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.sm,
+            vertical: 4,
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.storage_rounded,
+                        size: 28,
+                        color: AppColors.primary,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '${usedPct.toInt()}%',
+                        style: const TextStyle(
+                          fontSize: 26,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Text(
+                    '${fmt(usedBytes)} / ${fmt(totalBytes)}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.secondaryText,
+                    ),
+                  ),
+                ],
+              ),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: (usedPct / 100.0).clamp(0.0, 1.0),
+                  minHeight: 8,
+                  backgroundColor: Colors.grey.withOpacity(0.2),
+                  color: usedPct > 85 ? AppColors.error : AppColors.primary,
+                ),
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _buildInPanelStatTile('Used', fmt(usedBytes)),
+                  _buildInPanelStatTile('Free', fmt(freeBytes)),
+                  _buildInPanelStatTile('Total', fmt(totalBytes)),
+                ],
+              ),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                      ),
+                      onPressed: () =>
+                          NativeBridge.instance.openSystemSetting('storage'),
+                      child: const Text(
+                        'Storage Settings',
+                        style: TextStyle(fontSize: 11),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                      ),
+                      onPressed: () {
+                        _closePanel();
+                        context.push('/tools/storage-analyzer');
+                      },
+                      child: const Text(
+                        'Full Analyzer',
+                        style: TextStyle(fontSize: 11),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // 8. In-Panel Device Telemetry
+  Widget _buildInPanelDeviceInfo(double height) {
+    return FutureBuilder<Map<String, dynamic>>(
+      future: NativeBridge.instance.getDeviceInfo(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return SizedBox(
+            height: height,
+            child: const Center(
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          );
+        }
+        final data = snapshot.data!;
+        final model = data['model']?.toString() ?? 'Android Device';
+        final manufacturer = data['manufacturer']?.toString() ?? '';
+        final sdk = data['sdkVersion']?.toString() ?? '';
+        final release = data['release']?.toString() ?? '';
+        final availMem = (data['availMemory'] as num?)?.toInt() ?? 0;
+        final totalMem = (data['totalMemory'] as num?)?.toInt() ?? 0;
+
+        return Container(
+          height: height,
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.sm,
+            vertical: 4,
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  const Icon(
+                    Icons.perm_device_information_rounded,
+                    size: 28,
+                    color: Color(0xFF06B6D4),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '$manufacturer $model'.trim(),
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        Text(
+                          'Android $release (SDK $sdk)',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: AppColors.secondaryText,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _buildInPanelStatTile(
+                    'RAM Avail',
+                    availMem > 0
+                        ? '${(availMem / (1024 * 1024)).toInt()} MB'
+                        : 'N/A',
+                  ),
+                  _buildInPanelStatTile(
+                    'Total RAM',
+                    totalMem > 0
+                        ? '${(totalMem / (1024 * 1024)).toInt()} MB'
+                        : 'N/A',
+                  ),
+                ],
+              ),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.zero,
+                  ),
+                  onPressed: () {
+                    _closePanel();
+                    context.push('/tools/device-info');
+                  },
+                  child: const Text(
+                    'Open Full Device Telemetry',
+                    style: TextStyle(fontSize: 11),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // 9. In-Panel Screen Magnifier
+  Widget _buildInPanelMagnifier(double height) {
+    return Container(
+      height: height,
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.sm,
+        vertical: 8,
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          const Text(
+            'Magnify small text or inspect items using your camera or Android Accessibility Zoom shortcut.',
+            style: TextStyle(fontSize: 12, color: AppColors.secondaryText),
+            textAlign: TextAlign.center,
+          ),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              minimumSize: const Size(double.infinity, 38),
+            ),
+            onPressed: () {
+              _closePanel();
+              context.push('/tools/magnifier');
+            },
+            icon: const Icon(Icons.videocam_rounded, size: 18),
+            label: const Text(
+              'Launch Camera Magnifier',
+              style: TextStyle(fontSize: 12),
+            ),
+          ),
+          OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size(double.infinity, 36),
+            ),
+            onPressed: () =>
+                NativeBridge.instance.requestPermission('accessibility'),
+            icon: const Icon(Icons.accessibility_new_rounded, size: 16),
+            label: const Text(
+              'Accessibility Zoom Settings',
+              style: TextStyle(fontSize: 11),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInPanelStatTile(String label, String value) {
+    return Column(
+      children: [
+        Text(
+          label,
+          style: const TextStyle(fontSize: 10, color: AppColors.secondaryText),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+        ),
+      ],
     );
   }
 }

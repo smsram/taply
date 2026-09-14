@@ -42,7 +42,6 @@ class AppManager(private val context: Context) {
 
             val appName = try {
                 info.loadLabel(pm)?.toString() ?: pkgName
-            } catch (_: Exception) {
             } catch (e: Exception) {
                 pkgName
             }
@@ -50,7 +49,6 @@ class AppManager(private val context: Context) {
             val isSystemApp = try {
                 val appInfo = pm.getApplicationInfo(pkgName, 0)
                 (appInfo.flags and (ApplicationInfo.FLAG_SYSTEM or ApplicationInfo.FLAG_UPDATED_SYSTEM_APP)) != 0
-            } catch (_: Exception) {
             } catch (e: Exception) {
                 false
             }

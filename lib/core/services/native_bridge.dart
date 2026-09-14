@@ -15,7 +15,53 @@ class NativeBridge {
   );
 
   static final NativeBridge instance = NativeBridge._();
-  NativeBridge._();
+  NativeBridge._() {
+    _channel.setMethodCallHandler((call) async {
+      try {
+        if (call.method == 'onNavigateRoute') {
+          final route = call.arguments is String
+              ? call.arguments as String
+              : null;
+          if (route != null && route.isNotEmpty) {
+            _navigationHandler?.call(route);
+          }
+        } else if (call.method == 'onTorchStateChanged') {
+          bool enabled = false;
+          if (call.arguments is bool) {
+            enabled = call.arguments as bool;
+          } else if (call.arguments is Map) {
+            enabled = (call.arguments as Map)['enabled'] as bool? ?? false;
+          }
+          _notifyTorchListeners(enabled);
+        }
+      } catch (e) {
+        debugPrint('[NativeBridge] Error in method call ${call.method}: $e');
+      }
+    });
+  }
+
+  void Function(String route)? _navigationHandler;
+  final List<void Function(bool enabled)> _torchListeners = [];
+
+  void addTorchListener(void Function(bool enabled) listener) {
+    if (!_torchListeners.contains(listener)) {
+      _torchListeners.add(listener);
+    }
+  }
+
+  void removeTorchListener(void Function(bool enabled) listener) {
+    _torchListeners.remove(listener);
+  }
+
+  void _notifyTorchListeners(bool enabled) {
+    for (final listener in List<void Function(bool)>.from(_torchListeners)) {
+      try {
+        listener(enabled);
+      } catch (e) {
+        debugPrint('[NativeBridge] torch listener error: $e');
+      }
+    }
+  }
 
   static bool enableInTests = false;
 
@@ -353,9 +399,12 @@ class NativeBridge {
   // ==========================================
 
   Future<bool> toggleFlashlight() async {
-    if (!isNativeAvailable) return true;
+    if (!isNativeAvailable) return false;
     try {
-      return await _channel.invokeMethod<bool>('toggleFlashlight') ?? false;
+      final newState =
+          await _channel.invokeMethod<bool>('toggleFlashlight') ?? false;
+      _notifyTorchListeners(newState);
+      return newState;
     } catch (e) {
       debugPrint('[NativeBridge] toggleFlashlight error: $e');
       return false;
@@ -373,12 +422,13 @@ class NativeBridge {
   }
 
   Future<bool> setTorch(bool enabled) async {
-    if (!isNativeAvailable) return true;
+    if (!isNativeAvailable) return false;
     try {
-      return await _channel.invokeMethod<bool>('setTorch', {
-            'enabled': enabled,
-          }) ??
+      final res =
+          await _channel.invokeMethod<bool>('setTorch', {'enabled': enabled}) ??
           false;
+      _notifyTorchListeners(enabled);
+      return res;
     } catch (e) {
       debugPrint('[NativeBridge] setTorch error: $e');
       return false;
@@ -569,13 +619,6 @@ class NativeBridge {
   }
 
   void setNavigationHandler(void Function(String route) handler) {
-    _channel.setMethodCallHandler((call) async {
-      if (call.method == 'onNavigateRoute') {
-        final route = call.arguments as String?;
-        if (route != null && route.isNotEmpty) {
-          handler(route);
-        }
-      }
-    });
+    _navigationHandler = handler;
   }
 }

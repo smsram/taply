@@ -8,30 +8,36 @@ class StatusCard extends StatelessWidget {
   final bool isEnabled;
   final ValueChanged<bool> onToggle;
   final VoidCallback? onSettingsTap;
+  final IconData? icon;
+  final Color? customColor;
 
   const StatusCard({
     super.key,
     required this.isEnabled,
     required this.onToggle,
     this.onSettingsTap,
+    this.icon,
+    this.customColor,
   });
 
   @override
   Widget build(BuildContext context) {
+    final activeColor =
+        customColor ??
+        (context.isDarkMode ? AppColors.darkPrimary : AppColors.primary);
+
     return Container(
       padding: const EdgeInsets.all(AppSpacing.base),
       decoration: BoxDecoration(
         color: isEnabled
             ? (context.isDarkMode
-                  ? const Color(0xFF0D233A)
-                  : const Color(0xFFEFF6FF))
+                  ? activeColor.withOpacity(0.15)
+                  : activeColor.withOpacity(0.08))
             : context.colorScheme.surface,
         borderRadius: AppSpacing.borderRadiusMd,
         border: Border.all(
           color: isEnabled
-              ? (context.isDarkMode
-                    ? AppColors.darkPrimary.withOpacity(0.5)
-                    : AppColors.primary.withOpacity(0.35))
+              ? activeColor.withOpacity(0.4)
               : context.colorScheme.outline,
           width: 1.2,
         ),
@@ -43,14 +49,14 @@ class StatusCard extends StatelessWidget {
             height: 46,
             decoration: BoxDecoration(
               color: isEnabled
-                  ? (context.isDarkMode
-                        ? AppColors.darkPrimary
-                        : AppColors.primary)
+                  ? activeColor
                   : context.colorScheme.onSurface.withOpacity(0.08),
               shape: BoxShape.circle,
             ),
             child: Icon(
-              isEnabled ? Icons.touch_app_rounded : Icons.touch_app_outlined,
+              isEnabled
+                  ? (icon ?? Icons.touch_app_rounded)
+                  : Icons.touch_app_outlined,
               color: isEnabled
                   ? Colors.white
                   : context.colorScheme.onSurface.withOpacity(0.4),
@@ -99,22 +105,25 @@ class StatusCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  isEnabled ? 'Taply is active' : 'Taply is disabled',
+                  isEnabled
+                      ? 'Tap button anywhere on screen to access'
+                      : 'Enable to display persistent floating button',
                   style: context.textTheme.bodySmall?.copyWith(
-                    color: isEnabled
-                        ? (context.isDarkMode
-                              ? const Color(0xFF93C5FD)
-                              : AppColors.primaryDark)
-                        : (context.isDarkMode
-                              ? AppColors.darkSecondaryText
-                              : AppColors.secondaryText),
                     fontWeight: FontWeight.w500,
+                    color: context.isDarkMode
+                        ? AppColors.darkSecondaryText
+                        : AppColors.secondaryText,
+                    fontSize: 12,
                   ),
                 ),
               ],
             ),
           ),
-          Switch(value: isEnabled, onChanged: onToggle),
+          Switch.adaptive(
+            value: isEnabled,
+            onChanged: onToggle,
+            activeColor: activeColor,
+          ),
         ],
       ),
     );

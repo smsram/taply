@@ -6,10 +6,12 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/utils/extensions.dart';
 import '../models/panel_config.dart';
+import '../models/system_action_catalog.dart';
 
 /// Live interactive preview of the Assistive Floating Panel.
 /// Reacts dynamically to layout style changes (3x3 grid, 4x2 grid, wheel, list)
 /// and color/labels preferences.
+/// and actual action order and color preferences.
 class FloatingPanelPreview extends StatelessWidget {
   final PanelConfig panelConfig;
   final Color primaryColor;
@@ -20,17 +22,24 @@ class FloatingPanelPreview extends StatelessWidget {
     this.primaryColor = AppColors.primary,
   });
 
-  static const List<_PreviewAction> _previewActions = [
-    _PreviewAction('Back', Icons.arrow_back_rounded, Color(0xFF64748B)),
-    _PreviewAction('Home', Icons.home_rounded, AppColors.primary),
-    _PreviewAction('Recents', Icons.view_carousel_rounded, Color(0xFF06B6D4)),
-    _PreviewAction('Lock', Icons.lock_outline_rounded, Color(0xFFEF4444)),
-    _PreviewAction('Screenshot', Icons.screenshot_rounded, Color(0xFF8B5CF6)),
-    _PreviewAction('Volume', Icons.volume_up_rounded, Color(0xFF10B981)),
-    _PreviewAction('Brightness', Icons.brightness_6_rounded, Color(0xFFF59E0B)),
-    _PreviewAction('Apps', Icons.apps_rounded, Color(0xFF14B8A6)),
-    _PreviewAction('Torch', Icons.flashlight_on_rounded, Color(0xFFEAB308)),
-  ];
+  List<_PreviewAction> _getActions() {
+    final rawOrder = panelConfig.actionOrder.isNotEmpty
+        ? panelConfig.actionOrder
+        : const [
+            'back',
+            'home',
+            'recent_apps',
+            'lock_screen',
+            'screenshot',
+            'volume',
+            'brightness',
+            'flashlight',
+          ];
+    return rawOrder.map((id) {
+      final action = SystemActionCatalog.getAction(id);
+      return _PreviewAction(action.title, action.icon, action.color);
+    }).toList();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -122,6 +131,7 @@ class FloatingPanelPreview extends StatelessWidget {
   Widget _buildLayoutContent(BuildContext context) {
     switch (panelConfig.layoutStyle) {
       case PanelLayoutStyle.multiPage:
+        return _buildMultiPageCarousel(context);
       case PanelLayoutStyle.grid4x2:
         return _build4x2Grid(context);
       case PanelLayoutStyle.grid3x3:
@@ -133,8 +143,92 @@ class FloatingPanelPreview extends StatelessWidget {
     }
   }
 
+  Widget _buildMultiPageCarousel(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Tabs Header
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          physics: const NeverScrollableScrollPhysics(),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _buildTabPill('Actions', isSelected: true),
+              const SizedBox(width: 4),
+              _buildTabPill('Apps', isSelected: false),
+              const SizedBox(width: 4),
+              _buildTabPill('Tools', isSelected: false),
+              const SizedBox(width: 4),
+              _buildTabPill('Controls', isSelected: false),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        _build4x2Grid(context),
+        const SizedBox(height: 8),
+        // Footer navigation pills
+        Row(
+          children: [
+            Expanded(
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 5),
+                decoration: BoxDecoration(
+                  color: context.isDarkMode
+                      ? Colors.white.withOpacity(0.06)
+                      : const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                alignment: Alignment.center,
+                child: const Text(
+                  'All Apps',
+                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 5),
+                decoration: BoxDecoration(
+                  color: context.isDarkMode
+                      ? Colors.white.withOpacity(0.06)
+                      : const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                alignment: Alignment.center,
+                child: const Text(
+                  'Controls',
+                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTabPill(String title, {required bool isSelected}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: isSelected ? primaryColor : Colors.transparent,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        title,
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+          color: isSelected ? Colors.white : Colors.grey,
+        ),
+      ),
+    );
+  }
+
   Widget _build3x3Grid(BuildContext context) {
-    final actions = _previewActions
+    final actions = _getActions()
         .take(panelConfig.maxActions.clamp(1, 9))
         .toList();
     return GridView.builder(
@@ -155,7 +249,7 @@ class FloatingPanelPreview extends StatelessWidget {
   }
 
   Widget _build4x2Grid(BuildContext context) {
-    final actions = _previewActions
+    final actions = _getActions()
         .take(panelConfig.maxActions.clamp(1, 8))
         .toList();
     return GridView.builder(
@@ -178,7 +272,7 @@ class FloatingPanelPreview extends StatelessWidget {
   Widget _buildWheelLayout(BuildContext context) {
     const size = 180.0;
     const centerSize = 44.0;
-    final actions = _previewActions.take(6).toList();
+    final actions = _getActions().take(6).toList();
 
     return SizedBox(
       width: size,
@@ -203,7 +297,7 @@ class FloatingPanelPreview extends StatelessWidget {
           // Radial tiles
           ...List.generate(actions.length, (i) {
             final angle = (i * 2 * math.pi / actions.length) - (math.pi / 2);
-            final radius = 64.0;
+            const radius = 64.0;
             final x = radius * math.cos(angle);
             final y = radius * math.sin(angle);
             final a = actions[i];
@@ -228,7 +322,9 @@ class FloatingPanelPreview extends StatelessWidget {
   }
 
   Widget _buildVerticalList(BuildContext context) {
-    final actions = _previewActions.take(4).toList();
+    final actions = _getActions()
+        .take(panelConfig.maxActions.clamp(1, 6))
+        .toList();
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: actions.map((a) {

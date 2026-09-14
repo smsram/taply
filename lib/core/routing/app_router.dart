@@ -232,5 +232,59 @@ final GoRouter appRouter = GoRouter(
       path: '/tools/magnifier',
       builder: (context, state) => const ScreenMagnifierScreen(),
     ),
+
+    // Backward-compatibility & Shortcut Redirects
+    GoRoute(path: '/compass', redirect: (context, state) => '/tools/compass'),
+    GoRoute(
+      path: '/screen-magnifier',
+      redirect: (context, state) => '/tools/magnifier',
+    ),
+    GoRoute(
+      path: '/battery-diagnostics',
+      redirect: (context, state) => '/tools/battery-diagnostics',
+    ),
+    GoRoute(
+      path: '/storage-analyzer',
+      redirect: (context, state) => '/tools/storage-analyzer',
+    ),
+    GoRoute(path: '/home', redirect: (context, state) => '/'),
   ],
+  errorBuilder: (context, state) {
+    debugPrint('[GoRouter] Route error: ${state.error} for uri: ${state.uri}');
+    return Scaffold(
+      appBar: AppBar(title: const Text('Taply')),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.near_me_disabled_rounded,
+                size: 64,
+                color: Colors.amber,
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Page Not Found',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Could not locate: ${state.uri}',
+                style: const TextStyle(color: Colors.grey),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                onPressed: () => context.go('/'),
+                icon: const Icon(Icons.home_rounded),
+                label: const Text('Return to Home'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  },
 );

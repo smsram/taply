@@ -79,221 +79,245 @@ class _CompassScreenState extends State<CompassScreen> {
         ],
       ),
       body: SafeArea(
-        child: Column(
-          children: [
-            const SizedBox(height: AppSpacing.md),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final availableWidth = constraints.maxWidth;
+            final availableHeight = constraints.maxHeight;
+            final isLandscape = availableWidth > availableHeight;
+            final dialSize = math
+                .min(
+                  availableWidth * 0.75,
+                  isLandscape ? availableHeight * 0.55 : availableHeight * 0.38,
+                )
+                .clamp(160.0, 280.0);
+            final needleSize = dialSize * (220.0 / 280.0);
 
-            // Calibration & Accuracy status chip
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: _isAvailable
-                    ? (_accuracy == 'High'
-                          ? AppColors.success.withOpacity(0.12)
-                          : AppColors.warning.withOpacity(0.12))
-                    : AppColors.error.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: _isAvailable
-                      ? (_accuracy == 'High'
-                            ? AppColors.success
-                            : AppColors.warning)
-                      : AppColors.error,
-                  width: 1,
-                ),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    _isAvailable
-                        ? (_accuracy == 'High'
-                              ? Icons.check_circle_rounded
-                              : Icons.warning_rounded)
-                        : Icons.sensors_off_rounded,
-                    size: 14,
-                    color: _isAvailable
-                        ? (_accuracy == 'High'
-                              ? AppColors.success
-                              : AppColors.warning)
-                        : AppColors.error,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    _isAvailable
-                        ? 'Accuracy: $_accuracy'
-                        : 'Magnetometer Sensor Unavailable',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: _isAvailable
-                          ? (_accuracy == 'High'
-                                ? AppColors.success
-                                : AppColors.warning)
-                          : AppColors.error,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            return SingleChildScrollView(
+              padding: const EdgeInsets.only(bottom: AppSpacing.lg),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: IntrinsicHeight(
+                  child: Column(
+                    children: [
+                      const SizedBox(height: AppSpacing.md),
 
-            if (!_isAvailable) ...[
-              const Spacer(),
-              Padding(
-                padding: const EdgeInsets.all(AppSpacing.xl),
-                child: Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(AppSpacing.lg),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.explore_off_rounded,
-                          size: 56,
-                          color: AppColors.error,
+                      // Calibration & Accuracy status chip
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
                         ),
-                        const SizedBox(height: AppSpacing.md),
-                        Text(
-                          'Sensor Unavailable',
-                          style: context.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
+                        decoration: BoxDecoration(
+                          color: _isAvailable
+                              ? (_accuracy == 'High'
+                                    ? AppColors.success.withOpacity(0.12)
+                                    : AppColors.warning.withOpacity(0.12))
+                              : AppColors.error.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: _isAvailable
+                                ? (_accuracy == 'High'
+                                      ? AppColors.success
+                                      : AppColors.warning)
+                                : AppColors.error,
+                            width: 1,
                           ),
                         ),
-                        const SizedBox(height: AppSpacing.sm),
-                        Text(
-                          'This device does not have a physical magnetometer or rotation sensor. Compass heading requires real hardware orientation sensors.',
-                          textAlign: TextAlign.center,
-                          style: context.textTheme.bodySmall,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              const Spacer(),
-            ] else ...[
-              const Spacer(),
-
-              // Heading & Cardinal Display
-              Text(
-                '${_heading.toInt()}°',
-                style: context.textTheme.displayMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -1,
-                  color: AppColors.primary,
-                ),
-              ),
-              Text(
-                cardinal,
-                style: context.textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: isDark
-                      ? AppColors.darkPrimaryText
-                      : AppColors.primaryText,
-                ),
-              ),
-
-              const SizedBox(height: AppSpacing.lg),
-
-              // Compass Rose / Dial
-              Center(
-                child: SizedBox(
-                  width: 280,
-                  height: 280,
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      // Outer Degree Ring
-                      CustomPaint(
-                        size: const Size(280, 280),
-                        painter: _CompassDialPainter(
-                          color: isDark
-                              ? Colors.white.withOpacity(0.2)
-                              : Colors.black.withOpacity(0.2),
-                          textColor: isDark
-                              ? AppColors.darkSecondaryText
-                              : AppColors.secondaryText,
-                        ),
-                      ),
-
-                      // Rotating Compass Needle
-                      Transform.rotate(
-                        angle: -_heading * (math.pi / 180),
-                        child: Stack(
-                          alignment: Alignment.center,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            CustomPaint(
-                              size: const Size(220, 220),
-                              painter: _CompassNeedlePainter(),
+                            Icon(
+                              _isAvailable
+                                  ? (_accuracy == 'High'
+                                        ? Icons.check_circle_rounded
+                                        : Icons.warning_rounded)
+                                  : Icons.sensors_off_rounded,
+                              size: 14,
+                              color: _isAvailable
+                                  ? (_accuracy == 'High'
+                                        ? AppColors.success
+                                        : AppColors.warning)
+                                  : AppColors.error,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              _isAvailable
+                                  ? 'Accuracy: $_accuracy'
+                                  : 'Magnetometer Sensor Unavailable',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: _isAvailable
+                                    ? (_accuracy == 'High'
+                                          ? AppColors.success
+                                          : AppColors.warning)
+                                    : AppColors.error,
+                              ),
                             ),
                           ],
                         ),
                       ),
 
-                      // Center Hub
-                      Container(
-                        width: 24,
-                        height: 24,
-                        decoration: BoxDecoration(
-                          color: AppColors.primary,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 3),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.2),
-                              blurRadius: 6,
-                              offset: const Offset(0, 2),
+                      if (!_isAvailable) ...[
+                        const Spacer(),
+                        Padding(
+                          padding: const EdgeInsets.all(AppSpacing.xl),
+                          child: Card(
+                            child: Padding(
+                              padding: const EdgeInsets.all(AppSpacing.lg),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(
+                                    Icons.explore_off_rounded,
+                                    size: 56,
+                                    color: AppColors.error,
+                                  ),
+                                  const SizedBox(height: AppSpacing.md),
+                                  Text(
+                                    'Sensor Unavailable',
+                                    style: context.textTheme.titleMedium
+                                        ?.copyWith(fontWeight: FontWeight.w700),
+                                  ),
+                                  const SizedBox(height: AppSpacing.sm),
+                                  Text(
+                                    'This device does not have a physical magnetometer or rotation sensor. Compass heading requires real hardware orientation sensors.',
+                                    textAlign: TextAlign.center,
+                                    style: context.textTheme.bodySmall,
+                                  ),
+                                ],
+                              ),
                             ),
-                          ],
+                          ),
                         ),
-                      ),
+                        const Spacer(),
+                      ] else ...[
+                        const SizedBox(height: AppSpacing.md),
+
+                        // Heading & Cardinal Display
+                        Text(
+                          '${_heading.toInt()}°',
+                          style: context.textTheme.displayMedium?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -1,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                        Text(
+                          cardinal,
+                          style: context.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: isDark
+                                ? AppColors.darkPrimaryText
+                                : AppColors.primaryText,
+                          ),
+                        ),
+
+                        const SizedBox(height: AppSpacing.md),
+
+                        // Compass Rose / Dial
+                        Center(
+                          child: SizedBox(
+                            width: dialSize,
+                            height: dialSize,
+                            child: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                // Outer Degree Ring
+                                CustomPaint(
+                                  size: Size(dialSize, dialSize),
+                                  painter: _CompassDialPainter(
+                                    color: isDark
+                                        ? Colors.white.withOpacity(0.2)
+                                        : Colors.black.withOpacity(0.2),
+                                    textColor: isDark
+                                        ? AppColors.darkSecondaryText
+                                        : AppColors.secondaryText,
+                                  ),
+                                ),
+
+                                // Rotating Compass Needle
+                                Transform.rotate(
+                                  angle: -_heading * (math.pi / 180),
+                                  child: CustomPaint(
+                                    size: Size(needleSize, needleSize),
+                                    painter: _CompassNeedlePainter(),
+                                  ),
+                                ),
+
+                                // Center Hub
+                                Container(
+                                  width: dialSize * 0.086,
+                                  height: dialSize * 0.086,
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primary,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: Colors.white,
+                                      width: 2.5,
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.2),
+                                        blurRadius: 6,
+                                        offset: const Offset(0, 2),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(height: AppSpacing.md),
+                        const Spacer(),
+
+                        // Live Telemetry Row
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AppSpacing.base,
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: _buildTelemetryCard(
+                                  context,
+                                  'AZIMUTH',
+                                  '${_heading.toStringAsFixed(1)}°',
+                                  Icons.navigation_rounded,
+                                ),
+                              ),
+                              const SizedBox(width: AppSpacing.sm),
+                              Expanded(
+                                child: _buildTelemetryCard(
+                                  context,
+                                  'BEARING',
+                                  cardinal,
+                                  Icons.explore_rounded,
+                                ),
+                              ),
+                              const SizedBox(width: AppSpacing.sm),
+                              Expanded(
+                                child: _buildTelemetryCard(
+                                  context,
+                                  'CALIBRATION',
+                                  _accuracy,
+                                  Icons.tune_rounded,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: AppSpacing.base),
+                      ],
                     ],
                   ),
                 ),
               ),
-
-              const Spacer(),
-
-              // Live Telemetry Row
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.base,
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _buildTelemetryCard(
-                        context,
-                        'AZIMUTH',
-                        '${_heading.toStringAsFixed(1)}°',
-                        Icons.navigation_rounded,
-                      ),
-                    ),
-                    const SizedBox(width: AppSpacing.sm),
-                    Expanded(
-                      child: _buildTelemetryCard(
-                        context,
-                        'BEARING',
-                        cardinal,
-                        Icons.explore_rounded,
-                      ),
-                    ),
-                    const SizedBox(width: AppSpacing.sm),
-                    Expanded(
-                      child: _buildTelemetryCard(
-                        context,
-                        'CALIBRATION',
-                        _accuracy,
-                        Icons.tune_rounded,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: AppSpacing.base),
-            ],
-          ],
+            );
+          },
         ),
       ),
     );

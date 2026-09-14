@@ -11,8 +11,15 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.content.res.Configuration
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
+import android.os.Environment
+import android.os.StatFs
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.ColorFilter
@@ -68,6 +75,9 @@ class OverlayService : Service() {
         const val KEY_POS_Y = "overlay_pos_y"
 
         var isRunning = false
+            private set
+        @Volatile
+        var currentInstance: OverlayService? = null
             private set
 
         fun start(context: Context) {
@@ -143,6 +153,12 @@ class OverlayService : Service() {
     private var timerRunnable: Runnable? = null
     private var timerTextView: TextView? = null
 
+    // Compass state
+    private var overlaySensorManager: SensorManager? = null
+    private var overlayCompassListener: SensorEventListener? = null
+    private var compassDegreesView: TextView? = null
+    private var compassDirectionView: TextView? = null
+
     // Idle timer
     private val idleHandler = Handler(Looper.getMainLooper())
     private val idleRunnable = Runnable {
@@ -159,6 +175,7 @@ class OverlayService : Service() {
     override fun onCreate() {
         super.onCreate()
         isRunning = true
+        currentInstance = this
         prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
 
@@ -205,7 +222,7 @@ class OverlayService : Service() {
         }
     }
 
-    private fun handleIntentConfig(intent: Intent) {
+    fun handleIntentConfig(intent: Intent) {
         val editor = prefs.edit()
         var changed = false
 
@@ -272,6 +289,15 @@ class OverlayService : Service() {
             favoritesList.addAll(list)
             editor.putString("favorites", list.joinToString(","))
             changed = true
+        }
+
+        for (trigger in listOf("singleTap", "doubleTap", "longPress", "swipeUp", "swipeDown", "swipeLeft", "swipeRight")) {
+            if (intent.hasExtra("gesture_$trigger")) {
+                val target = intent.getStringExtra("gesture_$trigger") ?: "none"
+                gestureActions[trigger] = target
+                editor.putString("gesture_$trigger", target)
+                changed = true
+            }
         }
 
         intent.getStringArrayListExtra("gestures_keys")?.let { keys ->
@@ -376,11 +402,15 @@ class OverlayService : Service() {
         }
     }
 
-    private fun updateOverlayViewProperties() {
+    fun updateOverlayViewProperties() {
         val sizePx = dpToPx(buttonSizeDp)
         layoutParams?.let { lp ->
             lp.width = sizePx
             lp.height = sizePx
+            val clampedX = clampX(lp.x, sizePx)
+            val clampedY = clampY(lp.y, sizePx)
+            lp.x = clampedX
+            lp.y = clampedY
             floatingView?.let { view ->
                 view.alpha = buttonOpacity
                 view.invalidate()
@@ -590,6 +620,7 @@ class OverlayService : Service() {
         animator.start()
         savePosition(targetX, lp.y)
         savePosition(targetX, targetY)
+        performHaptic()
     }
 
     private fun savePosition(x: Int, y: Int) {
@@ -627,6 +658,7 @@ class OverlayService : Service() {
         stopwatchRunnable?.let { stopwatchHandler.removeCallbacks(it) }
         timerRunning = false
         timerRunnable?.let { timerHandler.removeCallbacks(it) }
+        stopOverlayCompass()
         activeOverlayTool = null
 
         overlayPanelView?.let { view ->
@@ -804,6 +836,7 @@ class OverlayService : Service() {
                 setPadding(dpToPx(4), dpToPx(6), dpToPx(8), dpToPx(6))
                 setOnClickListener {
                     performHaptic()
+                    stopOverlayCompass()
                     activeOverlayTool = null
                     rebuildPanelCard()
                 }
@@ -817,6 +850,10 @@ class OverlayService : Service() {
                     "timer" -> "Timer"
                     "notes" -> "Quick Notes"
                     "device_info" -> "Device Telemetry"
+                    "compass" -> "Digital Compass"
+                    "battery" -> "Battery Diagnostics"
+                    "storage" -> "Storage Analyzer"
+                    "magnifier" -> "Screen Magnifier"
                     else -> "Tool"
                 }
                 textSize = 15f
@@ -902,6 +939,10 @@ class OverlayService : Service() {
                 "timer" -> renderTimerTool(toolContainer)
                 "notes" -> renderNotesTool(toolContainer)
                 "device_info" -> renderDeviceInfoTool(toolContainer)
+                "compass" -> renderCompassTool(toolContainer)
+                "battery" -> renderBatteryTool(toolContainer)
+                "storage" -> renderStorageTool(toolContainer)
+                "magnifier" -> renderMagnifierTool(toolContainer)
             }
             toolScroll.addView(toolContainer)
             card.addView(toolScroll)
@@ -1089,7 +1130,7 @@ class OverlayService : Service() {
 
     private fun buildActionTile(actionKey: String): View {
         return when (actionKey.lowercase()) {
-            "back" -> createActionButton("back", "Back", Color.parseColor("#2563EB")) {
+            "back" -> createActionButton("back", "Back", Color.parseColor("#64748B")) {
                 TaplyAccessibilityService.performBack()
                 dismissOverlayPanel()
             }
@@ -1097,7 +1138,7 @@ class OverlayService : Service() {
                 TaplyAccessibilityService.performHome()
                 dismissOverlayPanel()
             }
-            "recents" -> createActionButton("recents", "Recents", Color.parseColor("#2563EB")) {
+            "recents", "recent_apps", "recentapps" -> createActionButton("recents", "Recents", Color.parseColor("#06B6D4")) {
                 TaplyAccessibilityService.performRecents()
                 dismissOverlayPanel()
             }
@@ -1109,22 +1150,42 @@ class OverlayService : Service() {
                 TaplyAccessibilityService.performLockScreen()
                 dismissOverlayPanel()
             }
-            "volume" -> createActionButton("volume", "Volume", Color.parseColor("#8B5CF6")) {
+            "volume", "volume_dialog" -> createActionButton("volume", "Volume", Color.parseColor("#8B5CF6")) {
                 SystemController(this).openSystemSetting("sound")
                 dismissOverlayPanel()
             }
-            "flashlight" -> createActionButton("flashlight", "Flashlight", Color.parseColor("#F59E0B")) {
+            "brightness" -> createActionButton("brightness", "Brightness", Color.parseColor("#F59E0B")) {
+                SystemController(this).openSystemSetting("display")
+                dismissOverlayPanel()
+            }
+            "flashlight", "torch" -> createActionButton("flashlight", "Flashlight", Color.parseColor("#EAB308")) {
                 SystemController(this).toggleFlashlight()
             }
-            "notifications" -> createActionButton("notifications", "Notifs", Color.parseColor("#3B82F6")) {
+            "notifications", "notifs" -> createActionButton("notifications", "Notifs", Color.parseColor("#3B82F6")) {
                 TaplyAccessibilityService.performNotifications()
                 dismissOverlayPanel()
             }
-            "quicksettings", "quick_settings" -> createActionButton("quick_settings", "Quick", Color.parseColor("#06B6D4")) {
+            "quicksettings", "quick_settings", "quick" -> createActionButton("quick_settings", "Quick", Color.parseColor("#0284C7")) {
                 TaplyAccessibilityService.performQuickSettings()
                 dismissOverlayPanel()
             }
-            "calculator" -> createActionButton("calculator", "Calc", buttonColor) {
+            "wifi" -> createActionButton("wifi", "Wi-Fi", Color.parseColor("#2563EB")) {
+                SystemController(this).openSystemSetting("wifi")
+                dismissOverlayPanel()
+            }
+            "bluetooth" -> createActionButton("bluetooth", "Bluetooth", Color.parseColor("#3B82F6")) {
+                SystemController(this).openSystemSetting("bluetooth")
+                dismissOverlayPanel()
+            }
+            "airplane" -> createActionButton("airplane", "Airplane", Color.parseColor("#EC4899")) {
+                SystemController(this).openSystemSetting("airplane")
+                dismissOverlayPanel()
+            }
+            "autorotate", "auto_rotate", "rotation" -> createActionButton("autorotate", "Rotate", Color.parseColor("#10B981")) {
+                SystemController(this).openSystemSetting("display")
+                dismissOverlayPanel()
+            }
+            "calculator", "calc" -> createActionButton("calculator", "Calc", buttonColor) {
                 activeOverlayTool = "calculator"
                 rebuildPanelCard()
             }
@@ -1140,9 +1201,25 @@ class OverlayService : Service() {
                 activeOverlayTool = "notes"
                 rebuildPanelCard()
             }
-            "deviceinfo", "device_info" -> createActionButton("device_info", "Device", Color.parseColor("#06B6D4")) {
+            "deviceinfo", "device_info", "telemetry" -> createActionButton("device_info", "Device", Color.parseColor("#06B6D4")) {
                 activeOverlayTool = "device_info"
                 rebuildPanelCard()
+            }
+            "compass" -> createActionButton("compass", "Compass", Color.parseColor("#0D9488")) {
+                activeOverlayTool = "compass"
+                rebuildPanelCard()
+            }
+            "battery" -> createActionButton("battery", "Battery", Color.parseColor("#10B981")) {
+                activeOverlayTool = "battery"
+                rebuildPanelCard()
+            }
+            "storage" -> createActionButton("storage", "Storage", Color.parseColor("#8B5CF6")) {
+                activeOverlayTool = "storage"
+                rebuildPanelCard()
+            }
+            "apps", "app_drawer" -> createActionButton("apps", "Apps", Color.parseColor("#14B8A6")) {
+                dismissOverlayPanel()
+                openTaplyApp("/app-drawer")
             }
             else -> createActionButton("settings", "Settings", Color.parseColor("#64748B")) {
                 SystemController(this).openSystemSetting("settings")
@@ -1326,10 +1403,14 @@ class OverlayService : Service() {
         row2.addView(createActionButton("magnifier", "Magnifier", Color.parseColor("#3B82F6")) {
             dismissOverlayPanel()
             openTaplyApp("/screen-magnifier")
+            activeOverlayTool = "magnifier"
+            rebuildPanelCard()
         })
         row2.addView(createActionButton("compass", "Compass", Color.parseColor("#EC4899")) {
             dismissOverlayPanel()
             openTaplyApp("/compass")
+            activeOverlayTool = "compass"
+            rebuildPanelCard()
         })
         container.addView(row2)
 
@@ -1345,10 +1426,14 @@ class OverlayService : Service() {
         row3.addView(createActionButton("battery", "Battery", Color.parseColor("#10B981")) {
             dismissOverlayPanel()
             openTaplyApp("/battery-diagnostics")
+            activeOverlayTool = "battery"
+            rebuildPanelCard()
         })
         row3.addView(createActionButton("storage", "Storage", Color.parseColor("#F59E0B")) {
             dismissOverlayPanel()
             openTaplyApp("/storage-analyzer")
+            activeOverlayTool = "storage"
+            rebuildPanelCard()
         })
         row3.addView(createActionButton("customize", "Customize", Color.parseColor("#8B5CF6")) {
             dismissOverlayPanel()
@@ -1357,6 +1442,7 @@ class OverlayService : Service() {
         row3.addView(createActionButton("taply", "Taply App", buttonColor) {
             dismissOverlayPanel()
             openTaplyApp("/home")
+            openTaplyApp("/")
         })
         container.addView(row3)
 
@@ -1366,6 +1452,40 @@ class OverlayService : Service() {
 
     private fun renderControlsTab(card: LinearLayout) {
         val sys = SystemController(this)
+        val conn = sys.getConnectivityStatus()
+        val isWifi = conn["wifi"] as? Boolean ?: false
+        val isBt = conn["bluetooth"] as? Boolean ?: false
+        val isAirplane = conn["airplaneMode"] as? Boolean ?: false
+        val isTorch = sys.isFlashlightOn()
+
+        val connRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = dpToPx(8)
+            }
+        }
+        connRow.addView(createPillButton(if (isWifi) "Wi-Fi: ON" else "Wi-Fi: OFF", active = isWifi) {
+            sys.openSystemSetting("wifi")
+            dismissOverlayPanel()
+        })
+        connRow.addView(createPillButton(if (isBt) "BT: ON" else "BT: OFF", active = isBt) {
+            sys.openSystemSetting("bluetooth")
+            dismissOverlayPanel()
+        })
+        connRow.addView(createPillButton(if (isAirplane) "Air: ON" else "Air: OFF", active = isAirplane) {
+            sys.openSystemSetting("airplane")
+            dismissOverlayPanel()
+        })
+        connRow.addView(createPillButton(if (isTorch) "Torch: ON" else "Torch: OFF", active = isTorch) {
+            sys.toggleFlashlight()
+            dismissOverlayPanel()
+        })
+        card.addView(connRow)
+        card.addView(createDivider())
+
         val volLevels = sys.getVolumeLevels()
         val curMedia = (volLevels["mediaVolume"] as? Double ?: 0.5) * 100
         val curRing = (volLevels["ringVolume"] as? Double ?: 0.5) * 100
@@ -1854,6 +1974,550 @@ class OverlayService : Service() {
         card.addView(container)
     }
 
+    private fun renderCompassTool(card: LinearLayout) {
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(0, dpToPx(8), 0, dpToPx(8))
+        }
+
+        val degreesText = TextView(this).apply {
+            text = "---°"
+            textSize = 36f
+            setTextColor(Color.WHITE)
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+        }
+        compassDegreesView = degreesText
+        container.addView(degreesText)
+
+        val dirText = TextView(this).apply {
+            text = "Calibrating..."
+            textSize = 16f
+            setTextColor(Color.parseColor("#EC4899"))
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            setPadding(0, 0, 0, dpToPx(8))
+        }
+        compassDirectionView = dirText
+        container.addView(dirText)
+
+        val dialView = object : View(this) {
+            private var currentAngle = 0f
+            private val circlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.parseColor("#1F2937")
+                style = Paint.Style.STROKE
+                strokeWidth = 4f
+            }
+            private val northPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.parseColor("#EF4444")
+                style = Paint.Style.FILL
+            }
+            private val southPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.parseColor("#9CA3AF")
+                style = Paint.Style.FILL
+            }
+            private val hubPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.WHITE
+                style = Paint.Style.FILL
+            }
+
+            fun setHeading(deg: Float) {
+                currentAngle = -deg
+                invalidate()
+            }
+
+            override fun onDraw(canvas: Canvas) {
+                super.onDraw(canvas)
+                val cx = width / 2f
+                val cy = height / 2f
+                val radius = Math.min(cx, cy) - dpToPx(6)
+
+                canvas.drawCircle(cx, cy, radius, circlePaint)
+
+                canvas.save()
+                canvas.rotate(currentAngle, cx, cy)
+
+                val nPath = Path().apply {
+                    moveTo(cx, cy - radius + dpToPx(8))
+                    lineTo(cx - dpToPx(10), cy)
+                    lineTo(cx + dpToPx(10), cy)
+                    close()
+                }
+                canvas.drawPath(nPath, northPaint)
+
+                val sPath = Path().apply {
+                    moveTo(cx, cy + radius - dpToPx(8))
+                    lineTo(cx - dpToPx(10), cy)
+                    lineTo(cx + dpToPx(10), cy)
+                    close()
+                }
+                canvas.drawPath(sPath, southPaint)
+
+                canvas.drawCircle(cx, cy, dpToPx(5).toFloat(), hubPaint)
+                canvas.restore()
+            }
+        }.apply {
+            layoutParams = LinearLayout.LayoutParams(dpToPx(120), dpToPx(120)).apply {
+                gravity = Gravity.CENTER_HORIZONTAL
+                bottomMargin = dpToPx(8)
+            }
+        }
+        container.addView(dialView)
+
+        stopOverlayCompass()
+        overlaySensorManager = getSystemService(Context.SENSOR_SERVICE) as? SensorManager
+        val rotSensor = overlaySensorManager?.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
+        val oriSensor = if (rotSensor == null) overlaySensorManager?.getDefaultSensor(Sensor.TYPE_ORIENTATION) else null
+
+        overlayCompassListener = object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent?) {
+                if (event == null) return
+                var deg = 0f
+                if (event.sensor.type == Sensor.TYPE_ROTATION_VECTOR) {
+                    val r = FloatArray(9)
+                    val values = FloatArray(3)
+                    SensorManager.getRotationMatrixFromVector(r, event.values)
+                    SensorManager.getOrientation(r, values)
+                    deg = ((Math.toDegrees(values[0].toDouble()) + 360) % 360).toFloat()
+                } else if (event.sensor.type == Sensor.TYPE_ORIENTATION) {
+                    deg = ((event.values[0] + 360) % 360)
+                }
+
+                val intDeg = deg.toInt()
+                val directions = arrayOf("N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW")
+                val dirIndex = ((intDeg + 11.25) / 22.5).toInt() % 16
+
+                compassDegreesView?.text = "$intDeg°"
+                compassDirectionView?.text = directions[dirIndex]
+                dialView.setHeading(deg)
+            }
+
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+        }
+
+        if (rotSensor != null) {
+            overlaySensorManager?.registerListener(overlayCompassListener, rotSensor, SensorManager.SENSOR_DELAY_UI)
+        } else if (oriSensor != null) {
+            @Suppress("DEPRECATION")
+            overlaySensorManager?.registerListener(overlayCompassListener, oriSensor, SensorManager.SENSOR_DELAY_UI)
+        } else {
+            dirText.text = "Compass sensor not available"
+        }
+
+        card.addView(container)
+    }
+
+    private fun stopOverlayCompass() {
+        try {
+            overlayCompassListener?.let {
+                overlaySensorManager?.unregisterListener(it)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error unregistering compass sensor", e)
+        }
+        overlayCompassListener = null
+        overlaySensorManager = null
+        compassDegreesView = null
+        compassDirectionView = null
+    }
+
+    private fun renderBatteryTool(card: LinearLayout) {
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dpToPx(4), 0, dpToPx(4))
+        }
+
+        val ifilter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
+        val batteryStatus = registerReceiver(null, ifilter)
+        val level = batteryStatus?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+        val scale = batteryStatus?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+        val pct = if (level >= 0 && scale > 0) (level * 100 / scale) else -1
+        val status = batteryStatus?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+        val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
+        val chargePlug = batteryStatus?.getIntExtra(BatteryManager.EXTRA_PLUGGED, -1) ?: -1
+        val plugType = when (chargePlug) {
+            BatteryManager.BATTERY_PLUGGED_USB -> "USB Cable"
+            BatteryManager.BATTERY_PLUGGED_AC -> "AC Fast Charger"
+            BatteryManager.BATTERY_PLUGGED_WIRELESS -> "Wireless Dock"
+            else -> if (isCharging) "Charging" else "Discharging"
+        }
+        val health = batteryStatus?.getIntExtra(BatteryManager.EXTRA_HEALTH, BatteryManager.BATTERY_HEALTH_UNKNOWN) ?: BatteryManager.BATTERY_HEALTH_UNKNOWN
+        val healthStr = when (health) {
+            BatteryManager.BATTERY_HEALTH_GOOD -> "Good (Healthy)"
+            BatteryManager.BATTERY_HEALTH_OVERHEAT -> "Overheating"
+            BatteryManager.BATTERY_HEALTH_DEAD -> "Dead / Damaged"
+            BatteryManager.BATTERY_HEALTH_OVER_VOLTAGE -> "Over Voltage"
+            else -> "Normal"
+        }
+        val rawTemp = batteryStatus?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0) ?: 0
+        val temp = rawTemp / 10.0
+        val rawVoltage = batteryStatus?.getIntExtra(BatteryManager.EXTRA_VOLTAGE, 0) ?: 0
+        val tech = batteryStatus?.getStringExtra(BatteryManager.EXTRA_TECHNOLOGY) ?: "Li-ion"
+
+        val headerRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dpToPx(6), 0, dpToPx(12))
+        }
+        val pctText = TextView(this).apply {
+            text = if (pct >= 0) "$pct%" else "Unknown"
+            textSize = 34f
+            setTextColor(if (pct > 20) Color.parseColor("#10B981") else Color.parseColor("#EF4444"))
+            typeface = Typeface.DEFAULT_BOLD
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        val statusBadge = TextView(this).apply {
+            text = if (isCharging) "⚡ Charging" else "On Battery"
+            textSize = 12f
+            setTextColor(Color.WHITE)
+            typeface = Typeface.DEFAULT_BOLD
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dpToPx(12).toFloat()
+                setColor(if (isCharging) Color.parseColor("#10B981") else Color.parseColor("#374151"))
+            }
+            setPadding(dpToPx(10), dpToPx(4), dpToPx(10), dpToPx(4))
+        }
+        headerRow.addView(pctText)
+        headerRow.addView(statusBadge)
+        container.addView(headerRow)
+
+        val progressTrack = LinearLayout(this).apply {
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dpToPx(8)).apply {
+                bottomMargin = dpToPx(12)
+            }
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dpToPx(4).toFloat()
+                setColor(Color.parseColor("#374151"))
+            }
+        }
+        val fillWidth = if (pct in 0..100) pct / 100f else 0.5f
+        val progressFill = View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, fillWidth)
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dpToPx(4).toFloat()
+                setColor(if (pct > 20) Color.parseColor("#10B981") else Color.parseColor("#EF4444"))
+            }
+        }
+        val emptySpacer = View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f - fillWidth)
+        }
+        progressTrack.addView(progressFill)
+        progressTrack.addView(emptySpacer)
+        container.addView(progressTrack)
+
+        fun addRow(label: String, value: String) {
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                setPadding(0, dpToPx(3), 0, dpToPx(3))
+                val l = TextView(context).apply {
+                    text = label
+                    textSize = 12f
+                    setTextColor(Color.parseColor("#9CA3AF"))
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                }
+                val v = TextView(context).apply {
+                    text = value
+                    textSize = 12f
+                    setTextColor(Color.WHITE)
+                    typeface = Typeface.DEFAULT_BOLD
+                }
+                addView(l)
+                addView(v)
+            }
+            container.addView(row)
+        }
+
+        addRow("Power Source", plugType)
+        addRow("Health", healthStr)
+        addRow("Temperature", if (rawTemp > 0) "%.1f°C".format(temp) else "N/A")
+        addRow("Voltage", if (rawVoltage > 0) "$rawVoltage mV" else "N/A")
+        addRow("Technology", tech)
+
+        val settingsBtn = TextView(this).apply {
+            text = "Open Battery Saver Settings"
+            textSize = 13f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dpToPx(10).toFloat()
+                setColor(Color.parseColor("#1F2937"))
+            }
+            setPadding(0, dpToPx(10), 0, dpToPx(10))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = dpToPx(12)
+            }
+            setOnClickListener {
+                performHaptic()
+                try {
+                    val intent = Intent(Settings.ACTION_BATTERY_SAVER_SETTINGS).apply {
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    try {
+                        val fallback = Intent(Intent.ACTION_POWER_USAGE_SUMMARY).apply {
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                        }
+                        startActivity(fallback)
+                    } catch (e2: Exception) {
+                        Log.e(TAG, "Cannot open battery settings", e2)
+                    }
+                }
+            }
+        }
+        container.addView(settingsBtn)
+        card.addView(container)
+    }
+
+    private fun renderStorageTool(card: LinearLayout) {
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dpToPx(4), 0, dpToPx(4))
+        }
+
+        var totalBytes = 0L
+        var freeBytes = 0L
+        var usedBytes = 0L
+        var usedPct = 0
+        try {
+            val stat = StatFs(Environment.getDataDirectory().path)
+            val blockSize = stat.blockSizeLong
+            val totalBlocks = stat.blockCountLong
+            val availBlocks = stat.availableBlocksLong
+            totalBytes = totalBlocks * blockSize
+            freeBytes = availBlocks * blockSize
+            usedBytes = totalBytes - freeBytes
+            usedPct = if (totalBytes > 0) ((usedBytes.toDouble() / totalBytes) * 100).toInt() else 0
+        } catch (e: Exception) {
+            Log.e(TAG, "Error calculating storage", e)
+        }
+
+        fun formatBytes(bytes: Long): String {
+            val gb = bytes.toDouble() / (1024 * 1024 * 1024)
+            return "%.1f GB".format(gb)
+        }
+
+        val headerRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dpToPx(6), 0, dpToPx(12))
+        }
+        val pctText = TextView(this).apply {
+            text = "$usedPct%"
+            textSize = 34f
+            setTextColor(if (usedPct < 85) Color.parseColor("#F59E0B") else Color.parseColor("#EF4444"))
+            typeface = Typeface.DEFAULT_BOLD
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        val usedSummary = TextView(this).apply {
+            text = "${formatBytes(usedBytes)} used"
+            textSize = 12f
+            setTextColor(Color.parseColor("#9CA3AF"))
+            gravity = Gravity.END
+        }
+        headerRow.addView(pctText)
+        headerRow.addView(usedSummary)
+        container.addView(headerRow)
+
+        val progressTrack = LinearLayout(this).apply {
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dpToPx(8)).apply {
+                bottomMargin = dpToPx(12)
+            }
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dpToPx(4).toFloat()
+                setColor(Color.parseColor("#374151"))
+            }
+        }
+        val fillWidth = if (usedPct in 0..100) usedPct / 100f else 0.5f
+        val progressFill = View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, fillWidth)
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dpToPx(4).toFloat()
+                setColor(if (usedPct < 85) Color.parseColor("#F59E0B") else Color.parseColor("#EF4444"))
+            }
+        }
+        val emptySpacer = View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f - fillWidth)
+        }
+        progressTrack.addView(progressFill)
+        progressTrack.addView(emptySpacer)
+        container.addView(progressTrack)
+
+        fun addRow(label: String, value: String) {
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                setPadding(0, dpToPx(3), 0, dpToPx(3))
+                val l = TextView(context).apply {
+                    text = label
+                    textSize = 12f
+                    setTextColor(Color.parseColor("#9CA3AF"))
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                }
+                val v = TextView(context).apply {
+                    text = value
+                    textSize = 12f
+                    setTextColor(Color.WHITE)
+                    typeface = Typeface.DEFAULT_BOLD
+                }
+                addView(l)
+                addView(v)
+            }
+            container.addView(row)
+        }
+
+        addRow("Total Space", formatBytes(totalBytes))
+        addRow("Used Space", formatBytes(usedBytes))
+        addRow("Free Available", formatBytes(freeBytes))
+
+        val settingsBtn = TextView(this).apply {
+            text = "Open Storage Settings"
+            textSize = 13f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dpToPx(10).toFloat()
+                setColor(Color.parseColor("#1F2937"))
+            }
+            setPadding(0, dpToPx(10), 0, dpToPx(10))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = dpToPx(12)
+            }
+            setOnClickListener {
+                performHaptic()
+                try {
+                    val intent = Intent(Settings.ACTION_INTERNAL_STORAGE_SETTINGS).apply {
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    try {
+                        val fallback = Intent(Settings.ACTION_SETTINGS).apply {
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                        }
+                        startActivity(fallback)
+                    } catch (e2: Exception) {
+                        Log.e(TAG, "Cannot open storage settings", e2)
+                    }
+                }
+            }
+        }
+        container.addView(settingsBtn)
+        card.addView(container)
+    }
+
+    private fun renderMagnifierTool(card: LinearLayout) {
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dpToPx(4), 0, dpToPx(4))
+        }
+
+        val desc = TextView(this).apply {
+            text = "Magnify small text or inspect items using your camera or Android Accessibility Zoom shortcut."
+            textSize = 13f
+            setTextColor(Color.parseColor("#9CA3AF"))
+            setPadding(0, dpToPx(4), 0, dpToPx(12))
+        }
+        container.addView(desc)
+
+        val cameraBtn = TextView(this).apply {
+            text = "Launch Camera Magnifier"
+            textSize = 13f
+            setTextColor(Color.WHITE)
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dpToPx(10).toFloat()
+                setColor(Color.parseColor("#3B82F6"))
+            }
+            setPadding(0, dpToPx(10), 0, dpToPx(10))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = dpToPx(8)
+            }
+            setOnClickListener {
+                performHaptic()
+                dismissOverlayPanel()
+                openTaplyApp("/tools/magnifier")
+            }
+        }
+        container.addView(cameraBtn)
+
+        val a11yBtn = TextView(this).apply {
+            text = "Accessibility Zoom Shortcut"
+            textSize = 13f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dpToPx(10).toFloat()
+                setColor(Color.parseColor("#1F2937"))
+            }
+            setPadding(0, dpToPx(10), 0, dpToPx(10))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = dpToPx(8)
+            }
+            setOnClickListener {
+                performHaptic()
+                try {
+                    val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Cannot open accessibility settings", e)
+                }
+            }
+        }
+        container.addView(a11yBtn)
+
+        val displayBtn = TextView(this).apply {
+            text = "Display & Text Size Settings"
+            textSize = 13f
+            setTextColor(Color.parseColor("#9CA3AF"))
+            gravity = Gravity.CENTER
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dpToPx(10).toFloat()
+                setColor(Color.parseColor("#111827"))
+            }
+            setPadding(0, dpToPx(10), 0, dpToPx(10))
+            setOnClickListener {
+                performHaptic()
+                try {
+                    val intent = Intent(Settings.ACTION_DISPLAY_SETTINGS).apply {
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Cannot open display settings", e)
+                }
+            }
+        }
+        container.addView(displayBtn)
+
+        card.addView(container)
+    }
+
     // ==========================================
     // OTHER PANEL STYLES (Grid, Wheel, List)
     // ==========================================
@@ -2106,12 +2770,14 @@ class OverlayService : Service() {
 
     private fun createPillButton(
         label: String,
+        active: Boolean = false,
         onClick: () -> Unit
     ): View {
         val pill = TextView(this).apply {
             text = label
             textSize = 12f
             setTextColor(Color.parseColor("#9CA3AF"))
+            setTextColor(if (active) Color.WHITE else Color.parseColor("#9CA3AF"))
             gravity = Gravity.CENTER
             layoutParams = LinearLayout.LayoutParams(0, dpToPx(34), 1f).apply {
                 setMargins(dpToPx(4), 0, dpToPx(4), 0)
@@ -2120,6 +2786,7 @@ class OverlayService : Service() {
                 shape = GradientDrawable.RECTANGLE
                 cornerRadius = dpToPx(17).toFloat()
                 setColor(Color.parseColor("#1F2937"))
+                setColor(if (active) Color.parseColor("#2563EB") else Color.parseColor("#1F2937"))
             }
             setOnClickListener {
                 performHaptic()
@@ -2172,18 +2839,26 @@ class OverlayService : Service() {
 
     private fun getScreenWidth(): Int {
         val wm = getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return 1080
-        val dm = DisplayMetrics()
-        @Suppress("DEPRECATION")
-        wm.defaultDisplay.getMetrics(dm)
-        return dm.widthPixels
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            wm.currentWindowMetrics.bounds.width()
+        } else {
+            val dm = DisplayMetrics()
+            @Suppress("DEPRECATION")
+            wm.defaultDisplay.getMetrics(dm)
+            dm.widthPixels
+        }
     }
 
     private fun getScreenHeight(): Int {
         val wm = getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return 1920
-        val dm = DisplayMetrics()
-        @Suppress("DEPRECATION")
-        wm.defaultDisplay.getMetrics(dm)
-        return dm.heightPixels
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            wm.currentWindowMetrics.bounds.height()
+        } else {
+            val dm = DisplayMetrics()
+            @Suppress("DEPRECATION")
+            wm.defaultDisplay.getMetrics(dm)
+            dm.heightPixels
+        }
     }
 
     private fun dpToPx(dp: Int): Int {
@@ -2194,6 +2869,7 @@ class OverlayService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         isRunning = false
+        currentInstance = null
         dismissOverlayPanel()
         floatingView?.let { view ->
             try {
@@ -2512,6 +3188,80 @@ class OverlayService : Service() {
                         close()
                     }
                     canvas.drawPath(spark, fillPaint)
+                }
+                "wifi", "📶" -> {
+                    canvas.drawCircle(cx, cy + r * 0.45f, r * 0.12f, fillPaint)
+                    val a1 = RectF(cx - r * 0.35f, cy + r * 0.05f, cx + r * 0.35f, cy + r * 0.75f)
+                    canvas.drawArc(a1, 210f, 120f, false, strokePaint)
+                    val a2 = RectF(cx - r * 0.65f, cy - r * 0.3f, cx + r * 0.65f, cy + r * 1.0f)
+                    canvas.drawArc(a2, 215f, 110f, false, strokePaint)
+                }
+                "bluetooth", "bt", "ᛒ" -> {
+                    val spine = Path().apply {
+                        moveTo(cx, cy - r * 0.7f)
+                        lineTo(cx, cy + r * 0.7f)
+                    }
+                    canvas.drawPath(spine, strokePaint)
+                    val rune = Path().apply {
+                        moveTo(cx - r * 0.35f, cy - r * 0.35f)
+                        lineTo(cx + r * 0.35f, cy + r * 0.35f)
+                        lineTo(cx, cy + r * 0.7f)
+                        lineTo(cx + r * 0.35f, cy - r * 0.35f)
+                        lineTo(cx - r * 0.35f, cy + r * 0.35f)
+                    }
+                    canvas.drawPath(rune, strokePaint)
+                }
+                "airplane", "airplanemode", "airplane_mode", "✈" -> {
+                    val plane = Path().apply {
+                        moveTo(cx, cy - r * 0.7f)
+                        lineTo(cx + r * 0.15f, cy - r * 0.2f)
+                        lineTo(cx + r * 0.75f, cy + r * 0.1f)
+                        lineTo(cx + r * 0.75f, cy + r * 0.25f)
+                        lineTo(cx + r * 0.15f, cy + r * 0.15f)
+                        lineTo(cx + r * 0.12f, cy + r * 0.5f)
+                        lineTo(cx + r * 0.35f, cy + r * 0.65f)
+                        lineTo(cx + r * 0.35f, cy + r * 0.75f)
+                        lineTo(cx, cy + r * 0.65f)
+                        lineTo(cx - r * 0.35f, cy + r * 0.75f)
+                        lineTo(cx - r * 0.35f, cy + r * 0.65f)
+                        lineTo(cx - r * 0.12f, cy + r * 0.5f)
+                        lineTo(cx - r * 0.15f, cy + r * 0.15f)
+                        lineTo(cx - r * 0.75f, cy + r * 0.25f)
+                        lineTo(cx - r * 0.75f, cy + r * 0.1f)
+                        lineTo(cx - r * 0.15f, cy - r * 0.2f)
+                        close()
+                    }
+                    canvas.drawPath(plane, fillPaint)
+                }
+                "brightness", "sun", "🔆", "☀" -> {
+                    canvas.drawCircle(cx, cy, r * 0.35f, strokePaint)
+                    for (i in 0 until 8) {
+                        val angle = (i * 45.0) * Math.PI / 180.0
+                        val x1 = cx + (r * 0.48f * Math.cos(angle)).toFloat()
+                        val y1 = cy + (r * 0.48f * Math.sin(angle)).toFloat()
+                        val x2 = cx + (r * 0.75f * Math.cos(angle)).toFloat()
+                        val y2 = cy + (r * 0.75f * Math.sin(angle)).toFloat()
+                        canvas.drawLine(x1, y1, x2, y2, strokePaint)
+                    }
+                }
+                "autorotate", "auto_rotate", "rotate", "🔄" -> {
+                    val phone = RectF(cx - r * 0.35f, cy - r * 0.55f, cx + r * 0.35f, cy + r * 0.55f)
+                    canvas.drawRoundRect(phone, 3f, 3f, strokePaint)
+                    val arc = RectF(cx - r * 0.7f, cy - r * 0.7f, cx + r * 0.7f, cy + r * 0.7f)
+                    canvas.drawArc(arc, 20f, 100f, false, strokePaint)
+                    canvas.drawArc(arc, 200f, 100f, false, strokePaint)
+                }
+                "apps", "app", "allapps", "all_apps", "▦" -> {
+                    val s = r * 0.32f
+                    val gap = r * 0.12f
+                    val d = s + gap
+                    for (row in -1..1) {
+                        for (col in -1..1) {
+                            val rx = cx + col * d - s / 2
+                            val ry = cy + row * d - s / 2
+                            canvas.drawRoundRect(RectF(rx, ry, rx + s, ry + s), 2f, 2f, fillPaint)
+                        }
+                    }
                 }
                 "close", "✕", "x" -> {
                     canvas.drawLine(cx - r * 0.5f, cy - r * 0.5f, cx + r * 0.5f, cy + r * 0.5f, strokePaint)

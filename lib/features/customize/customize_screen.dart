@@ -7,6 +7,7 @@ import '../../core/theme/app_spacing.dart';
 import '../../core/utils/extensions.dart';
 import '../../shared/models/floating_button_config.dart';
 import '../../shared/models/panel_config.dart';
+import '../../shared/models/system_action_catalog.dart';
 import '../../shared/widgets/app_section.dart';
 import '../../shared/widgets/floating_button_preview.dart';
 import '../../shared/widgets/floating_panel_preview.dart';
@@ -21,27 +22,121 @@ class CustomizeScreen extends ConsumerStatefulWidget {
 }
 
 class _CustomizeScreenState extends ConsumerState<CustomizeScreen> {
-  final Map<String, String> _actionLabels = {
-    'home': 'Home Navigation',
-    'back': 'Back Key',
-    'recent_apps': 'Recent Applications',
-    'lock_screen': 'Lock Screen',
-    'screenshot': 'Take Screenshot',
-    'volume': 'Volume Dialog',
-    'brightness': 'Brightness Slider',
-    'apps': 'App Drawer',
-  };
+  void _showAddActionSheet(BuildContext context, PanelConfig panelConfig) {
+    final available = SystemActionCatalog.getAvailableActionsToAdd(
+      panelConfig.actionOrder,
+    );
 
-  final Map<String, IconData> _actionIcons = {
-    'home': Icons.home_rounded,
-    'back': Icons.arrow_back_rounded,
-    'recent_apps': Icons.view_carousel_rounded,
-    'lock_screen': Icons.lock_outline_rounded,
-    'screenshot': Icons.screenshot_rounded,
-    'volume': Icons.volume_up_rounded,
-    'brightness': Icons.brightness_6_rounded,
-    'apps': Icons.apps_rounded,
-  };
+    if (available.isEmpty) {
+      context.showSnackBar('All available actions have already been added');
+      return;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: context.colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.only(top: AppSpacing.base),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.base,
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Add Action to Panel',
+                            style: sheetContext.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Choose an action to add to your quick panel',
+                            style: sheetContext.textTheme.bodySmall,
+                          ),
+                        ],
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close_rounded),
+                        onPressed: () => Navigator.pop(sheetContext),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(),
+                Flexible(
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: available.length,
+                    padding: const EdgeInsets.only(bottom: AppSpacing.base),
+                    itemBuilder: (context, index) {
+                      final action = available[index];
+                      return ListTile(
+                        leading: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: action.color.withOpacity(0.12),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            action.icon,
+                            color: action.color,
+                            size: 22,
+                          ),
+                        ),
+                        title: Text(
+                          action.title,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                          ),
+                        ),
+                        subtitle: Text(
+                          action.subtitle,
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        trailing: const Icon(
+                          Icons.add_circle_outline_rounded,
+                          color: AppColors.primary,
+                        ),
+                        onTap: () {
+                          Navigator.pop(sheetContext);
+                          final updated = List<String>.from(
+                            panelConfig.actionOrder,
+                          )..add(action.id);
+                          ref
+                              .read(settingsProvider.notifier)
+                              .updatePanelConfig(
+                                panelConfig.copyWith(actionOrder: updated),
+                              );
+                          context.showSnackBar('Added ${action.title}');
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -125,26 +220,29 @@ class _CustomizeScreenState extends ConsumerState<CustomizeScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Inactivity Auto-Dim',
-                          style: context.textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w600,
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Inactivity Auto-Dim',
+                            style: context.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
-                        ),
-                        Text(
-                          'Fade button when not touched',
-                          style: context.textTheme.bodySmall?.copyWith(
-                            fontSize: 11,
-                            color: context.isDarkMode
-                                ? AppColors.darkSecondaryText
-                                : AppColors.secondaryText,
+                          Text(
+                            'Fade button when not touched',
+                            style: context.textTheme.bodySmall?.copyWith(
+                              fontSize: 11,
+                              color: context.isDarkMode
+                                  ? AppColors.darkSecondaryText
+                                  : AppColors.secondaryText,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
+                    const SizedBox(width: AppSpacing.sm),
                     DropdownButton<int>(
                       value:
                           [
@@ -221,7 +319,8 @@ class _CustomizeScreenState extends ConsumerState<CustomizeScreen> {
             subtitle: 'Choose from 7 curated Taply brand color schemes',
             isCard: true,
             children: [
-              Padding(
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(
                   horizontal: AppSpacing.base,
                   vertical: AppSpacing.md,
@@ -242,6 +341,7 @@ class _CustomizeScreenState extends ConsumerState<CustomizeScreen> {
                       child: Container(
                         width: 38,
                         height: 38,
+                        margin: const EdgeInsets.symmetric(horizontal: 6),
                         decoration: BoxDecoration(
                           color: color,
                           shape: BoxShape.circle,
@@ -299,7 +399,7 @@ class _CustomizeScreenState extends ConsumerState<CustomizeScreen> {
                             );
                       },
                       child: Container(
-                        width: 96,
+                        width: 100,
                         margin: const EdgeInsets.symmetric(horizontal: 4),
                         padding: const EdgeInsets.symmetric(
                           vertical: AppSpacing.md,
@@ -320,6 +420,7 @@ class _CustomizeScreenState extends ConsumerState<CustomizeScreen> {
                           ),
                         ),
                         child: Column(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(
                               style.icon,
@@ -366,6 +467,7 @@ class _CustomizeScreenState extends ConsumerState<CustomizeScreen> {
           const SizedBox(height: AppSpacing.lg),
 
           // 3. PANEL LAYOUT
+          // 4. PANEL LAYOUT
           AppSection(
             title: 'Assistive Panel Layout',
             subtitle: 'Arrangement when the floating menu is opened',
@@ -396,9 +498,15 @@ class _CustomizeScreenState extends ConsumerState<CustomizeScreen> {
           const SizedBox(height: AppSpacing.lg),
 
           // 4. ACTION REORDERING (Drag and Drop Ordering)
+          // 5. ACTION REORDERING & ADD/REMOVE
           AppSection(
             title: 'Panel Action Order',
-            subtitle: 'Drag items using the handle to reorder actions inside the panel',
+            subtitle: 'Drag items to reorder or add/remove shortcuts',
+            trailing: TextButton.icon(
+              icon: const Icon(Icons.add_rounded, size: 18),
+              label: const Text('Add'),
+              onPressed: () => _showAddActionSheet(context, panelConfig),
+            ),
             isCard: true,
             children: [
               ReorderableListView.builder(
@@ -418,25 +526,76 @@ class _CustomizeScreenState extends ConsumerState<CustomizeScreen> {
                 },
                 itemBuilder: (context, index) {
                   final actionId = panelConfig.actionOrder[index];
-                  final label = _actionLabels[actionId] ?? actionId;
-                  final icon = _actionIcons[actionId] ?? Icons.settings_rounded;
+                  final action = SystemActionCatalog.getAction(actionId);
 
                   return ListTile(
                     key: ValueKey(actionId),
-                    leading: Icon(icon, color: AppColors.primary),
+                    leading: Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: action.color.withOpacity(0.12),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(action.icon, color: action.color, size: 20),
+                    ),
                     title: Text(
-                      label,
+                      action.title,
                       style: const TextStyle(
                         fontWeight: FontWeight.w600,
                         fontSize: 14,
                       ),
                     ),
-                    trailing: const Icon(
-                      Icons.drag_handle_rounded,
-                      color: Colors.grey,
+                    subtitle: Text(
+                      action.subtitle,
+                      style: const TextStyle(fontSize: 11),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (panelConfig.actionOrder.length > 2)
+                          IconButton(
+                            icon: const Icon(
+                              Icons.remove_circle_outline_rounded,
+                              color: Colors.redAccent,
+                              size: 20,
+                            ),
+                            tooltip: 'Remove action',
+                            onPressed: () {
+                              final updated = List<String>.from(
+                                panelConfig.actionOrder,
+                              )..removeAt(index);
+                              ref
+                                  .read(settingsProvider.notifier)
+                                  .updatePanelConfig(
+                                    panelConfig.copyWith(actionOrder: updated),
+                                  );
+                            },
+                          ),
+                        const Icon(
+                          Icons.drag_handle_rounded,
+                          color: Colors.grey,
+                        ),
+                      ],
                     ),
                   );
                 },
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.base,
+                  vertical: AppSpacing.sm,
+                ),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.add_circle_outline_rounded),
+                    label: const Text('Add More Actions'),
+                    onPressed: () => _showAddActionSheet(context, panelConfig),
+                  ),
+                ),
               ),
             ],
           ),

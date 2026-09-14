@@ -5,11 +5,12 @@ import 'package:go_router/go_router.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/services/native_bridge.dart';
 import '../../core/services/providers.dart';
-import '../../core/services/system_action_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/utils/extensions.dart';
+import '../../shared/models/floating_button_config.dart';
 import '../../shared/models/installed_app.dart';
+import '../../shared/models/system_action_catalog.dart';
 import '../../shared/widgets/app_icon.dart';
 import '../../shared/widgets/app_section.dart';
 import '../../shared/widgets/floating_button_preview.dart';
@@ -23,6 +24,13 @@ class HomeScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(settingsProvider);
     final appsAsync = ref.watch(appsProvider);
+    final allApps = appsAsync.asData?.value ?? [];
+    final favorites = allApps
+        .where((a) => a.isFavorite && !a.isHidden)
+        .toList();
+    final recents =
+        allApps.where((a) => a.lastUsedAt != null && !a.isHidden).toList()
+          ..sort((a, b) => b.lastUsedAt!.compareTo(a.lastUsedAt!));
 
     return Scaffold(
       appBar: AppBar(
@@ -51,12 +59,12 @@ class HomeScreen extends ConsumerWidget {
           IconButton(
             icon: const Icon(Icons.tune_rounded),
             onPressed: () => context.push('/quick-controls'),
-            tooltip: 'Quick Controls',
+            tooltip: context.loc.quickControls,
           ),
           IconButton(
             icon: const Icon(Icons.settings_outlined),
             onPressed: () => context.push('/settings'),
-            tooltip: 'Settings',
+            tooltip: context.loc.settings,
           ),
           const SizedBox(width: AppSpacing.xs),
         ],
@@ -71,6 +79,8 @@ class HomeScreen extends ConsumerWidget {
             padding: const EdgeInsets.symmetric(horizontal: AppSpacing.base),
             child: StatusCard(
               isEnabled: settings.isAssistantEnabled,
+              icon: settings.buttonConfig.iconStyle.icon,
+              customColor: settings.buttonConfig.customColor,
               onToggle: (enabled) {
                 ref.read(settingsProvider.notifier).toggleAssistant(enabled);
                 context.showSnackBar(
@@ -96,8 +106,9 @@ class HomeScreen extends ConsumerWidget {
           const SizedBox(height: AppSpacing.md),
 
           // 3. QUICK ACTIONS (Grid of 8 required actions)
+          // 3. QUICK ACTIONS (Dynamic actions from configured actionOrder)
           AppSection(
-            title: 'Quick Actions',
+            title: context.loc.quickActions,
             subtitle: 'Immediate system shortcuts',
             trailing: TextButton(
               onPressed: () => context.push('/quick-controls'),
@@ -105,272 +116,247 @@ class HomeScreen extends ConsumerWidget {
             ),
             children: [
               QuickActionGrid(
-                actions: [
-                  QuickActionItemData(
-                    id: 'lock',
-                    title: 'Lock Screen',
-                    icon: Icons.lock_outline_rounded,
-                    color: const Color(0xFFEF4444),
-                    onTap: () {
-                      ref
-                          .read(systemActionServiceProvider)
-                          .executeAction(SystemActionType.lockScreen);
-                      context.showSnackBar('Screen locked');
-                    },
-                  ),
-                  QuickActionItemData(
-                    id: 'volume',
-                    title: 'Volume',
-                    icon: Icons.volume_up_rounded,
-                    color: const Color(0xFF8B5CF6),
-                    onTap: () => context.push('/quick-controls'),
-                  ),
-                  QuickActionItemData(
-                    id: 'brightness',
-                    title: 'Brightness',
-                    icon: Icons.brightness_6_rounded,
-                    color: const Color(0xFFF59E0B),
-                    onTap: () => context.push('/quick-controls'),
-                  ),
-                  QuickActionItemData(
-                    id: 'screenshot',
-                    title: 'Screenshot',
-                    icon: Icons.screenshot_rounded,
-                    color: const Color(0xFF10B981),
-                    onTap: () {
-                      ref
-                          .read(systemActionServiceProvider)
-                          .executeAction(SystemActionType.screenshot);
-                      context.showSnackBar('Taking screenshot...');
-                    },
-                  ),
-                  QuickActionItemData(
-                    id: 'home',
-                    title: 'Home',
-                    icon: Icons.home_rounded,
-                    color: AppColors.primary,
-                    onTap: () {
-                      ref
-                          .read(systemActionServiceProvider)
-                          .executeAction(SystemActionType.home);
-                      context.showSnackBar('Home pressed');
-                    },
-                  ),
-                  QuickActionItemData(
-                    id: 'back',
-                    title: 'Back',
-                    icon: Icons.arrow_back_rounded,
-                    color: const Color(0xFF64748B),
-                    onTap: () {
-                      ref
-                          .read(systemActionServiceProvider)
-                          .executeAction(SystemActionType.back);
-                      context.showSnackBar('Back pressed');
-                    },
-                  ),
-                  QuickActionItemData(
-                    id: 'recents',
-                    title: 'Recent Apps',
-                    icon: Icons.view_carousel_rounded,
-                    color: const Color(0xFF06B6D4),
-                    onTap: () {
-                      ref
-                          .read(systemActionServiceProvider)
-                          .executeAction(SystemActionType.recentApps);
-                      context.showSnackBar('Recent apps opened');
-                    },
-                  ),
-                  QuickActionItemData(
-                    id: 'apps',
-                    title: 'Apps',
-                    icon: Icons.apps_rounded,
-                    color: const Color(0xFF14B8A6),
-                    onTap: () => context.go('/apps'),
-                  ),
-                ],
+                actions:
+                    (settings.panelConfig.actionOrder.isNotEmpty
+                            ? settings.panelConfig.actionOrder.take(8)
+                            : const [
+                                'lock_screen',
+                                'volume',
+                                'brightness',
+                                'screenshot',
+                                'home',
+                                'back',
+                                'recent_apps',
+                                'flashlight',
+                              ])
+                        .map((actionId) {
+                          final action = SystemActionCatalog.getAction(
+                            actionId,
+                          );
+                          return QuickActionItemData(
+                            id: action.id,
+                            title: action.title,
+                            icon: action.icon,
+                            color: action.color,
+                            onTap: () async {
+                              if (action.toolRoute != null) {
+                                context.push(action.toolRoute!);
+                              } else if (action.systemAction != null) {
+                                await ref
+                                    .read(systemActionServiceProvider)
+                                    .executeAction(action.systemAction!);
+                                if (context.mounted) {
+                                  context.showSnackBar(
+                                    '${action.title} executed',
+                                  );
+                                }
+                              }
+                            },
+                          );
+                        })
+                        .toList(),
               ),
             ],
           ),
           const SizedBox(height: AppSpacing.md),
 
           // 4. FAVORITE APPS
-          appsAsync.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (err, _) => const SizedBox(),
-            data: (apps) {
-              final favorites = apps
-                  .where((a) => a.isFavorite && !a.isHidden)
-                  .toList();
-
-              return AppSection(
-                title: 'Favorite Apps',
-                subtitle: 'Pinned for rapid one-touch opening',
-                trailing: TextButton(
-                  onPressed: () => context.go('/apps'),
-                  child: const Text('Manage'),
-                ),
-                children: [
-                  if (favorites.isNotEmpty)
-                    SizedBox(
-                      height: 94,
-                      child: ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: favorites.length,
-                        separatorBuilder: (context, index) =>
-                            const SizedBox(width: AppSpacing.md),
-                        itemBuilder: (context, index) {
-                          final app = favorites[index];
-                          return _buildFavoriteAppItem(context, ref, app);
-                        },
-                      ),
-                    )
-                  else
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(AppSpacing.base),
-                        child: Row(
-                          children: [
-                            const Icon(
-                              Icons.star_border_rounded,
-                              color: AppColors.accent,
-                              size: 28,
-                            ),
-                            const SizedBox(width: AppSpacing.md),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'No favorite apps yet',
-                                    style: context.textTheme.titleSmall,
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    'Add your most-used apps for faster access.',
-                                    style: context.textTheme.bodySmall,
-                                  ),
-                                ],
-                              ),
-                            ),
-                            ElevatedButton(
-                              onPressed: () => context.go('/apps'),
-                              child: const Text('Add Apps'),
-                            ),
-                          ],
+          AppSection(
+            title: context.loc.favoriteApps,
+            subtitle: 'Pinned for rapid one-touch opening',
+            trailing: TextButton(
+              onPressed: () => context.go('/apps'),
+              child: const Text('Manage'),
+            ),
+            children: [
+              if (appsAsync.isLoading && !appsAsync.hasValue)
+                const SizedBox(
+                  height: 94,
+                  child: Center(child: CircularProgressIndicator.adaptive()),
+                )
+              else if (appsAsync.hasError && !appsAsync.hasValue)
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppSpacing.base),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.error_outline_rounded,
+                          color: AppColors.error,
                         ),
+                        const SizedBox(width: AppSpacing.md),
+                        Expanded(
+                          child: Text(
+                            'Failed to load apps',
+                            style: context.textTheme.bodyMedium,
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () =>
+                              ref.read(appsProvider.notifier).refreshApps(),
+                          child: const Text('Retry'),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else ...[
+                if (favorites.isNotEmpty)
+                  SizedBox(
+                    height: 94,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: favorites.length,
+                      separatorBuilder: (context, index) =>
+                          const SizedBox(width: AppSpacing.md),
+                      itemBuilder: (context, index) {
+                        final app = favorites[index];
+                        return _buildFavoriteAppItem(context, ref, app);
+                      },
+                    ),
+                  )
+                else
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(AppSpacing.base),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.star_border_rounded,
+                            color: AppColors.accent,
+                            size: 28,
+                          ),
+                          const SizedBox(width: AppSpacing.md),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'No favorite apps yet',
+                                  style: context.textTheme.titleSmall,
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Add your most-used apps for faster access.',
+                                  style: context.textTheme.bodySmall,
+                                ),
+                              ],
+                            ),
+                          ),
+                          ElevatedButton(
+                            onPressed: () => context.go('/apps'),
+                            child: const Text('Add Apps'),
+                          ),
+                        ],
                       ),
                     ),
-                ],
-              );
-            },
+                  ),
+              ],
+            ],
           ),
           const SizedBox(height: AppSpacing.md),
 
           // 5. RECENTLY USED
-          appsAsync.when(
-            loading: () => const SizedBox(),
-            error: (err, stack) => const SizedBox(),
-            data: (apps) {
-              final recents =
-                  apps
-                      .where((a) => a.lastUsedAt != null && !a.isHidden)
-                      .toList()
-                    ..sort((a, b) => b.lastUsedAt!.compareTo(a.lastUsedAt!));
-
-              return AppSection(
-                title: 'Recently Used',
-                subtitle: 'Apps recently launched via Taply',
-                children: [
-                  if (recents.isNotEmpty)
-                    Card(
-                      child: ListView.separated(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: recents.take(3).length,
-                        separatorBuilder: (context, index) =>
-                            const Divider(height: 1),
-                        itemBuilder: (context, index) {
-                          final app = recents[index];
-                          return ListTile(
-                            leading: AppIcon(
-                              appName: app.appName,
-                              iconData: app.defaultIcon,
-                              color: app.iconColor,
-                              iconBytes: app.iconBytes,
-                              size: 38,
-                            ),
-                            title: Text(
-                              app.appName,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            subtitle: Text(
-                              'Opened ${_timeAgo(app.lastUsedAt!)}',
-                            ),
-                            trailing: const Icon(
-                              Icons.open_in_new_rounded,
-                              size: 18,
-                            ),
-                            onTap: () {
-                              ref
-                                  .read(appsProvider.notifier)
-                                  .recordLaunch(app.packageName);
-                              NativeBridge.instance.launchApp(app.packageName);
-                              context.showSnackBar('Opening ${app.appName}...');
-                            },
-                          );
-                        },
+          AppSection(
+            title: context.loc.recentlyUsed,
+            subtitle: 'Apps recently launched via Taply',
+            children: [
+              if (appsAsync.isLoading && !appsAsync.hasValue)
+                const SizedBox(
+                  height: 60,
+                  child: Center(child: CircularProgressIndicator.adaptive()),
+                )
+              else if (appsAsync.hasError && !appsAsync.hasValue)
+                const SizedBox()
+              else ...[
+                if (recents.isNotEmpty)
+                  Card(
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: recents.take(3).length,
+                      separatorBuilder: (context, index) =>
+                          const Divider(height: 1),
+                      itemBuilder: (context, index) {
+                        final app = recents[index];
+                        return ListTile(
+                          leading: AppIcon(
+                            appName: app.appName,
+                            iconData: app.defaultIcon,
+                            color: app.iconColor,
+                            iconBytes: app.iconBytes,
+                            size: 38,
+                          ),
+                          title: Text(
+                            app.appName,
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          subtitle: Text('Opened ${_timeAgo(app.lastUsedAt!)}'),
+                          trailing: const Icon(
+                            Icons.open_in_new_rounded,
+                            size: 18,
+                          ),
+                          onTap: () {
+                            ref
+                                .read(appsProvider.notifier)
+                                .recordLaunch(app.packageName);
+                            NativeBridge.instance.launchApp(app.packageName);
+                            context.showSnackBar('Opening ${app.appName}...');
+                          },
+                        );
+                      },
+                    ),
+                  )
+                else
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.base,
+                        vertical: AppSpacing.lg,
                       ),
-                    )
-                  else
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: AppSpacing.base,
-                          vertical: AppSpacing.lg,
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 44,
-                              height: 44,
-                              decoration: BoxDecoration(
-                                color: context.colorScheme.onSurface
-                                    .withOpacity(0.06),
-                                shape: BoxShape.circle,
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: context.colorScheme.onSurface.withOpacity(
+                                0.06,
                               ),
-                              child: Icon(
-                                Icons.history_rounded,
-                                color: context.colorScheme.onSurface
-                                    .withOpacity(0.4),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              Icons.history_rounded,
+                              color: context.colorScheme.onSurface.withOpacity(
+                                0.4,
                               ),
                             ),
-                            const SizedBox(width: AppSpacing.md),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'No recent apps',
-                                    style: context.textTheme.titleSmall
-                                        ?.copyWith(fontWeight: FontWeight.w600),
+                          ),
+                          const SizedBox(width: AppSpacing.md),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'No recent apps',
+                                  style: context.textTheme.titleSmall?.copyWith(
+                                    fontWeight: FontWeight.w600,
                                   ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    'Your recently used apps will appear here.',
-                                    style: context.textTheme.bodySmall,
-                                  ),
-                                ],
-                              ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Your recently used apps will appear here.',
+                                  style: context.textTheme.bodySmall,
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
                     ),
-                ],
-              );
-            },
+                  ),
+              ],
+            ],
           ),
         ],
       ),

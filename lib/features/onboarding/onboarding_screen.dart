@@ -68,11 +68,24 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     final orderedActions = _selectedEssentials
         .map((e) => mapping[e] ?? e.toLowerCase())
         .toList();
+    const defaultActions = [
+      'screenshot',
+      'volume',
+      'brightness',
+      'home',
+      'back',
+      'recent_apps',
+      'lock_screen',
+      'flashlight',
+    ];
+    final finalActions = orderedActions.isNotEmpty
+        ? orderedActions
+        : defaultActions;
     final settings = ref.read(settingsProvider);
     ref
         .read(settingsProvider.notifier)
         .updatePanelConfig(
-          settings.panelConfig.copyWith(actionOrder: orderedActions),
+          settings.panelConfig.copyWith(actionOrder: finalActions),
         );
     ref.read(settingsProvider.notifier).completeOnboarding();
     context.go('/');
