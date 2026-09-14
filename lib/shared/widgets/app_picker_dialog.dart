@@ -52,13 +52,9 @@ class _AppPickerDialogState extends ConsumerState<AppPickerDialog> {
   }
 
   Future<void> _saveFavorites() async {
-    final notifier = ref.read(appsProvider.notifier);
-    for (final app in widget.allApps) {
-      final shouldBeFavorite = _selectedPackages.contains(app.packageName);
-      if (app.isFavorite != shouldBeFavorite) {
-        await notifier.toggleFavorite(app.packageName);
-      }
-    }
+    await ref
+        .read(appsProvider.notifier)
+        .setFavorites(_selectedPackages.toList());
     if (mounted) {
       Navigator.of(context).pop();
       context.showSnackBar(

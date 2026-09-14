@@ -11,7 +11,7 @@ import '../../core/utils/extensions.dart';
 import '../../shared/models/installed_app.dart';
 import '../../shared/widgets/app_section.dart';
 import '../../shared/widgets/setting_tile.dart';
-import '../../shared/widgets/taply_brand_logo.dart';
+import '../../shared/widgets/taply_brand_icon.dart';
 import '../../shared/widgets/toggle_row.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -124,76 +124,17 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
-  void _showPrivacyDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: Row(
-            children: const [
-              Icon(
-                Icons.verified_user_rounded,
-                color: AppColors.primary,
-                size: 24,
-              ),
-              SizedBox(width: AppSpacing.sm),
-              Text('Privacy & Trust'),
-            ],
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: const [
-                Text(
-                  '100% On-Device Operation',
-                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
-                ),
-                SizedBox(height: 6),
-                Text(
-                  'Taply is an offline-first assistive utility. Your preferences, favorite apps, and system actions stay strictly on your device.',
-                  style: TextStyle(fontSize: 13, height: 1.4),
-                ),
-                SizedBox(height: AppSpacing.md),
-                Text(
-                  'Why Permissions are Needed:',
-                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
-                ),
-                SizedBox(height: 4),
-                Text(
-                  '• Overlay: Allows the assistive button to float over other apps.\n'
-                  '• Accessibility: Performs Back, Home, Recents, and Lock Screen actions on your tap.\n'
-                  '• Notifications: Keeps the background service active and responsive.\n'
-                  '• Battery: Prevents Android from terminating Taply while multitasking.',
-                  style: TextStyle(fontSize: 13, height: 1.4),
-                ),
-                SizedBox(height: AppSpacing.md),
-                Text(
-                  'No Data Collection',
-                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
-                ),
-                SizedBox(height: 4),
-                Text(
-                  'Taply contains zero analytics trackers, advertisements, or telemetry SDKs. We do not read your screen text or store passwords.',
-                  style: TextStyle(fontSize: 13, height: 1.4),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Close'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(settingsProvider);
+    final packageInfo = ref.watch(packageInfoProvider);
+    final versionStr = packageInfo.when(
+      data: (info) => 'Version ${info.version} • Build ${info.buildNumber}',
+      loading: () =>
+          'Version ${AppConstants.appVersion} • Build ${AppConstants.buildNumber}',
+      error: (err, stack) =>
+          'Version ${AppConstants.appVersion} • Build ${AppConstants.buildNumber}',
+    );
 
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
@@ -386,7 +327,7 @@ class SettingsScreen extends ConsumerWidget {
                 icon: Icons.verified_user_rounded,
                 title: 'Privacy Policy & Data Notice',
                 subtitle: '100% on-device operation. No analytics or tracking.',
-                onTap: () => _showPrivacyDialog(context),
+                onTap: () => context.push('/privacy-policy'),
               ),
               SettingTile(
                 icon: Icons.security_rounded,
@@ -409,7 +350,7 @@ class SettingsScreen extends ConsumerWidget {
                 padding: const EdgeInsets.all(AppSpacing.base),
                 child: Row(
                   children: [
-                    const TaplyBrandLogo(size: 48),
+                    const TaplyAppIcon(size: 48, borderRadius: 12),
                     const SizedBox(width: AppSpacing.md),
                     Expanded(
                       child: Column(
@@ -428,10 +369,7 @@ class SettingsScreen extends ConsumerWidget {
                             ),
                           ),
                           const SizedBox(height: 2),
-                          Text(
-                            'Version ${AppConstants.appVersion} • Build ${AppConstants.buildNumber}',
-                            style: context.textTheme.labelSmall,
-                          ),
+                          Text(versionStr, style: context.textTheme.labelSmall),
                           Text(
                             'Developer: Taply Open Source Team',
                             style: context.textTheme.labelSmall?.copyWith(
@@ -449,20 +387,13 @@ class SettingsScreen extends ConsumerWidget {
                 icon: Icons.policy_rounded,
                 title: 'Privacy Policy',
                 subtitle: 'Zero data collection • 100% on-device',
-                onTap: () => _showPrivacyDialog(context),
+                onTap: () => context.push('/privacy-policy'),
               ),
               SettingTile(
                 icon: Icons.code_rounded,
                 title: 'Open Source Licenses',
-                subtitle: 'Flutter, Material 3, Riverpod, Google Fonts',
-                onTap: () {
-                  showLicensePage(
-                    context: context,
-                    applicationName: AppConstants.appName,
-                    applicationVersion: AppConstants.appVersion,
-                    applicationLegalese: 'Copyright © 2026 Taply Open Source Project.\n"Everything, one tap away."',
-                  );
-                },
+                subtitle: 'Explore dependencies and open source notices',
+                onTap: () => context.push('/licenses'),
               ),
               SettingTile(
                 icon: Icons.mail_outline_rounded,

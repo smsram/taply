@@ -9,15 +9,24 @@ enum SystemActionType {
   recentApps,
   lockScreen,
   screenshot,
+  openNotifications,
+  openQuickSettings,
   screenRotation,
 
   // Sound
   mediaVolume,
   ringVolume,
   alarmVolume,
+  volumeUp,
+  volumeDown,
   mute,
   vibrate,
   soundMode,
+
+  // Hardware
+  toggleFlashlight,
+
+  // Display
 
   // Display
   brightness,
@@ -67,6 +76,12 @@ class NativeSystemActionService implements ISystemActionService {
       case SystemActionType.screenshot:
         final res = await _bridge.takeScreenshot();
         return res['success'] as bool? ?? false;
+      case SystemActionType.openNotifications:
+        final res = await _bridge.executeSystemAction('notifications');
+        return res['success'] as bool? ?? false;
+      case SystemActionType.openQuickSettings:
+        final res = await _bridge.executeSystemAction('quick_settings');
+        return res['success'] as bool? ?? false;
 
       // Volume & Sound controls
       case SystemActionType.mediaVolume:
@@ -78,6 +93,20 @@ class NativeSystemActionService implements ISystemActionService {
       case SystemActionType.alarmVolume:
         final vol = (parameter is num) ? parameter.toDouble() : 0.5;
         return await _bridge.setVolumeLevel('alarm', vol);
+      case SystemActionType.volumeUp:
+        final current = await _bridge.getVolumeLevels();
+        final curVol = (current['mediaVolume'] as num?)?.toDouble() ?? 0.5;
+        return await _bridge.setVolumeLevel(
+          'media',
+          (curVol + 0.1).clamp(0.0, 1.0),
+        );
+      case SystemActionType.volumeDown:
+        final current = await _bridge.getVolumeLevels();
+        final curVol = (current['mediaVolume'] as num?)?.toDouble() ?? 0.5;
+        return await _bridge.setVolumeLevel(
+          'media',
+          (curVol - 0.1).clamp(0.0, 1.0),
+        );
       case SystemActionType.mute:
         final isMuted = parameter == true;
         return await _bridge.setSoundMode(isMuted ? 'Silent' : 'Normal');
@@ -86,6 +115,11 @@ class NativeSystemActionService implements ISystemActionService {
       case SystemActionType.soundMode:
         final mode = parameter?.toString() ?? 'Normal';
         return await _bridge.setSoundMode(mode);
+
+      // Hardware
+      case SystemActionType.toggleFlashlight:
+        final isOn = await _bridge.isFlashlightOn();
+        return await _bridge.setTorch(!isOn);
 
       // Display controls
       case SystemActionType.brightness:

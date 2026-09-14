@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../../shared/models/floating_button_config.dart';
 import '../../shared/models/gesture_action.dart';
+import '../../shared/models/panel_config.dart';
 
 /// Centralized Flutter ↔ Android native bridge communicating over MethodChannel.
 class NativeBridge {
@@ -37,32 +38,36 @@ class NativeBridge {
   // 1. OVERLAY SERVICE
   // ==========================================
 
-  Future<bool> startOverlayService() async {
-    if (!isNativeAvailable) return false;
+  Future<bool> startOverlay() async {
+    if (!isNativeAvailable) return true;
     try {
       final res = await _channel.invokeMethod<Map>('startOverlay');
       return res?['success'] as bool? ?? false;
     } catch (e) {
-      debugPrint('[NativeBridge] startOverlayService error: $e');
+      debugPrint('[NativeBridge] startOverlay error: $e');
       return false;
     }
   }
 
-  Future<bool> stopOverlayService() async {
-    if (!isNativeAvailable) return false;
+  Future<bool> stopOverlay() async {
+    if (!isNativeAvailable) return true;
     try {
       final res = await _channel.invokeMethod<Map>('stopOverlay');
       return res?['success'] as bool? ?? false;
     } catch (e) {
-      debugPrint('[NativeBridge] stopOverlayService error: $e');
+      debugPrint('[NativeBridge] stopOverlay error: $e');
       return false;
     }
   }
 
+  Future<bool> startOverlayService() => startOverlay();
+  Future<bool> stopOverlayService() => stopOverlay();
+
   Future<bool> isOverlayRunning() async {
-    if (!isNativeAvailable) return false;
+    if (!isNativeAvailable) return true;
     try {
-      return await _channel.invokeMethod<bool>('isOverlayRunning') ?? false;
+      final running = await _channel.invokeMethod<bool>('isOverlayRunning');
+      return running ?? false;
     } catch (e) {
       debugPrint('[NativeBridge] isOverlayRunning error: $e');
       return false;
@@ -72,6 +77,8 @@ class NativeBridge {
   Future<void> updateOverlayConfig({
     required FloatingButtonConfig config,
     required Map<GestureTrigger, GestureBinding> gestures,
+    PanelConfig? panelConfig,
+    List<String>? favorites,
   }) async {
     if (!isNativeAvailable) return;
 
@@ -83,14 +90,27 @@ class NativeBridge {
     }
 
     try {
-      await _channel.invokeMethod('updateOverlayConfig', {
+      final payload = <String, dynamic>{
         'size': config.size.toInt(),
         'opacity': config.opacity,
+        'idleOpacity': config.idleOpacity,
+        'idleTimeoutSeconds': config.idleTimeoutSeconds,
+        'color': config.customColor.value,
         'edgeSnapping': config.edgeSnapping,
         'hapticFeedback': config.hapticFeedback,
         'iconStyle': config.iconStyle.name,
         'gestures': gestureMap,
-      });
+      };
+      if (panelConfig != null) {
+        payload['actionOrder'] = panelConfig.actionOrder;
+        payload['layoutStyle'] = panelConfig.layoutStyle.name;
+        payload['animationType'] = panelConfig.animationType.name;
+      }
+      if (favorites != null) {
+        payload['favorites'] = favorites;
+      }
+
+      await _channel.invokeMethod('updateOverlayConfig', payload);
     } catch (e) {
       debugPrint('[NativeBridge] updateOverlayConfig error: $e');
     }
@@ -352,6 +372,19 @@ class NativeBridge {
     }
   }
 
+  Future<bool> setTorch(bool enabled) async {
+    if (!isNativeAvailable) return true;
+    try {
+      return await _channel.invokeMethod<bool>('setTorch', {
+            'enabled': enabled,
+          }) ??
+          false;
+    } catch (e) {
+      debugPrint('[NativeBridge] setTorch error: $e');
+      return false;
+    }
+  }
+
   // ==========================================
   // 8. MEDIA CONTROLS
   // ==========================================
@@ -379,6 +412,29 @@ class NativeBridge {
     } catch (e) {
       debugPrint('[NativeBridge] getMediaStatus error: $e');
       return {'isPlaying': false, 'hasActiveSession': false};
+    }
+  }
+
+  // ==========================================
+  // 9. CONNECTIVITY STATUS
+  // ==========================================
+
+  Future<Map<String, dynamic>> getConnectivityStatus() async {
+    if (!isNativeAvailable) {
+      return {
+        'wifi': true,
+        'bluetooth': true,
+        'airplaneMode': false,
+        'location': true,
+        'nfc': false,
+      };
+    }
+    try {
+      final res = await _channel.invokeMethod<Map>('getConnectivityStatus');
+      return Map<String, dynamic>.from(res ?? {});
+    } catch (e) {
+      debugPrint('[NativeBridge] getConnectivityStatus error: $e');
+      return {};
     }
   }
 
@@ -456,6 +512,49 @@ class NativeBridge {
       return Map<String, dynamic>.from(res ?? {});
     } catch (e) {
       debugPrint('[NativeBridge] getDeviceInfo error: $e');
+      return {};
+    }
+  }
+
+  Future<Map<String, dynamic>> getBatteryDiagnostics() async {
+    if (!isNativeAvailable) {
+      return {
+        'level': 85,
+        'isCharging': false,
+        'status': 'Discharging',
+        'plugType': 'Unplugged',
+        'health': 'Good',
+        'temperature': 29.5,
+        'voltage': 4120,
+        'technology': 'Li-ion',
+        'powerSaveMode': false,
+        'isIgnoringBatteryOptimizations': true,
+      };
+    }
+    try {
+      final res = await _channel.invokeMethod<Map>('getBatteryDiagnostics');
+      return Map<String, dynamic>.from(res ?? {});
+    } catch (e) {
+      debugPrint('[NativeBridge] getBatteryDiagnostics error: $e');
+      return {};
+    }
+  }
+
+  Future<Map<String, dynamic>> getStorageDiagnostics() async {
+    if (!isNativeAvailable) {
+      return {
+        'totalBytes': 128000000000,
+        'freeBytes': 64000000000,
+        'usedBytes': 64000000000,
+        'usedPercentage': 50.0,
+        'dataDirectory': '/data',
+      };
+    }
+    try {
+      final res = await _channel.invokeMethod<Map>('getStorageDiagnostics');
+      return Map<String, dynamic>.from(res ?? {});
+    } catch (e) {
+      debugPrint('[NativeBridge] getStorageDiagnostics error: $e');
       return {};
     }
   }

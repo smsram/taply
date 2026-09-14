@@ -54,6 +54,8 @@ class TaplyMethodChannel(private val context: Context) : MethodChannel.MethodCal
                     val edgeSnapping = call.argument<Boolean>("edgeSnapping")
                     val hapticFeedback = call.argument<Boolean>("hapticFeedback")
                     val iconStyle = call.argument<String>("iconStyle")
+                    val color = call.argument<Int>("color")
+                    val idleTimeoutSeconds = call.argument<Int>("idleTimeoutSeconds")
 
                     if (size != null) putExtra("size", size.toInt())
                     if (opacity != null) putExtra("opacity", opacity.toFloat())
@@ -61,6 +63,28 @@ class TaplyMethodChannel(private val context: Context) : MethodChannel.MethodCal
                     if (edgeSnapping != null) putExtra("edgeSnapping", edgeSnapping)
                     if (hapticFeedback != null) putExtra("hapticFeedback", hapticFeedback)
                     if (iconStyle != null) putExtra("iconStyle", iconStyle)
+                    if (color != null) putExtra("color", color)
+                    if (idleTimeoutSeconds != null) putExtra("idleTimeoutSeconds", idleTimeoutSeconds)
+
+                    val actionOrder = call.argument<List<String>>("actionOrder")
+                    if (actionOrder != null) {
+                        putStringArrayListExtra("actionOrder", ArrayList(actionOrder))
+                    }
+
+                    val layoutStyle = call.argument<String>("layoutStyle")
+                    if (layoutStyle != null) {
+                        putExtra("layoutStyle", layoutStyle)
+                    }
+
+                    val animationType = call.argument<String>("animationType")
+                    if (animationType != null) {
+                        putExtra("animationType", animationType)
+                    }
+
+                    val favorites = call.argument<List<String>>("favorites")
+                    if (favorites != null) {
+                        putStringArrayListExtra("favorites", ArrayList(favorites))
+                    }
 
                     val gestures = call.argument<Map<String, String>>("gestures")
                     if (gestures != null) {
@@ -71,6 +95,28 @@ class TaplyMethodChannel(private val context: Context) : MethodChannel.MethodCal
                 }
                 if (OverlayService.isRunning) {
                     context.startService(intent)
+                } else {
+                    // Save to SharedPreferences immediately even if overlay service is currently stopped
+                    val prefs = context.getSharedPreferences(OverlayService.PREFS_NAME, Context.MODE_PRIVATE)
+                    val editor = prefs.edit()
+                    intent.extras?.let { bundle ->
+                        for (key in bundle.keySet()) {
+                            when (val v = bundle.get(key)) {
+                                is Int -> editor.putInt(key, v)
+                                is Float -> editor.putFloat(key, v)
+                                is Boolean -> editor.putBoolean(key, v)
+                                is String -> editor.putString(key, v)
+                                is ArrayList<*> -> {
+                                    @Suppress("UNCHECKED_CAST")
+                                    val strList = v as? ArrayList<String>
+                                    if (strList != null) {
+                                        editor.putString(key, strList.joinToString(","))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    editor.apply()
                 }
                 result.success(true)
             }
@@ -201,6 +247,11 @@ class TaplyMethodChannel(private val context: Context) : MethodChannel.MethodCal
             "isFlashlightOn" -> {
                 result.success(systemController.isFlashlightOn())
             }
+            "setTorch" -> {
+                val enabled = call.argument<Boolean>("enabled") ?: false
+                val success = systemController.setTorch(enabled)
+                result.success(success)
+            }
 
             // ==========================================
             // 8. MEDIA CONTROLS
@@ -215,21 +266,34 @@ class TaplyMethodChannel(private val context: Context) : MethodChannel.MethodCal
             }
 
             // ==========================================
-            // 9. SCREENSHOT
+            // 9. CONNECTIVITY STATUS
+            // ==========================================
+            "getConnectivityStatus" -> {
+                result.success(systemController.getConnectivityStatus())
+            }
+
+            // ==========================================
+            // 10. SCREENSHOT
             // ==========================================
             "takeScreenshot" -> {
                 result.success(screenshotManager.takeScreenshot())
             }
 
             // ==========================================
-            // 10. DEVICE INFO
+            // 11. DEVICE & DIAGNOSTICS INFO
             // ==========================================
             "getDeviceInfo" -> {
                 result.success(deviceInfoManager.getDeviceInfo())
             }
+            "getBatteryDiagnostics" -> {
+                result.success(deviceInfoManager.getBatteryDiagnostics())
+            }
+            "getStorageDiagnostics" -> {
+                result.success(deviceInfoManager.getStorageDiagnostics())
+            }
 
             // ==========================================
-            // 11. COMPASS SENSOR
+            // 12. COMPASS SENSOR
             // ==========================================
             "getCompassHeading" -> {
                 result.success(compassManager.getHeadingData())

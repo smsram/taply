@@ -67,6 +67,7 @@ class MockPermissionService implements IPermissionService {
     PermissionType.accessibility: PermissionStatus.notDetermined,
     PermissionType.notifications: PermissionStatus.granted,
     PermissionType.batteryOptimization: PermissionStatus.notDetermined,
+    PermissionType.writeSettings: PermissionStatus.notDetermined,
   };
 
   @override

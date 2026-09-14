@@ -114,7 +114,7 @@ class ToolsScreen extends StatelessWidget {
       iconColor: Color(0xFF16A34A),
       category: ToolCategory.deviceInsights,
       isImplementedInPhase1: true,
-      routePath: '/tools/device-info',
+      routePath: '/tools/battery-diagnostics',
     ),
     ToolItem(
       id: 'storage',
@@ -124,7 +124,7 @@ class ToolsScreen extends StatelessWidget {
       iconColor: Color(0xFFF97316),
       category: ToolCategory.deviceInsights,
       isImplementedInPhase1: true,
-      routePath: '/tools/device-info',
+      routePath: '/tools/storage-analyzer',
     ),
     ToolItem(
       id: 'converter',

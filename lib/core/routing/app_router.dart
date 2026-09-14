@@ -11,18 +11,23 @@ import '../../features/home/home_screen.dart';
 import '../../features/onboarding/onboarding_screen.dart';
 import '../../features/permissions/permissions_screen.dart';
 import '../../features/quick_controls/quick_controls_screen.dart';
+import '../../features/quick_actions/quick_actions_screen.dart';
+import '../../features/settings/licenses_screen.dart';
+import '../../features/settings/privacy_policy_screen.dart';
 import '../../features/settings/settings_screen.dart';
+import '../../features/tools/battery_diagnostics_screen.dart';
 import '../../features/tools/calculator_screen.dart';
 import '../../features/tools/compass_screen.dart';
 import '../../features/tools/device_info_screen.dart';
 import '../../features/tools/flashlight_screen.dart';
 import '../../features/tools/notes_screen.dart';
 import '../../features/tools/qr_tool_screen.dart';
+import '../../features/tools/screen_magnifier_screen.dart';
 import '../../features/tools/stopwatch_screen.dart';
+import '../../features/tools/storage_analyzer_screen.dart';
 import '../../features/tools/timer_screen.dart';
 import '../../features/tools/tools_screen.dart';
 import '../../features/tools/unit_converter_screen.dart';
-import '../../features/tools/screen_magnifier_screen.dart';
 import '../../shared/widgets/bottom_navigation.dart';
 
 final GlobalKey<NavigatorState> _rootNavigatorKey = GlobalKey<NavigatorState>(
@@ -150,6 +155,22 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => const OnboardingScreen(),
     ),
 
+    GoRoute(
+      parentNavigatorKey: _rootNavigatorKey,
+      path: '/privacy-policy',
+      builder: (context, state) => const PrivacyPolicyScreen(),
+    ),
+    GoRoute(
+      parentNavigatorKey: _rootNavigatorKey,
+      path: '/licenses',
+      builder: (context, state) => const LicensesScreen(),
+    ),
+    GoRoute(
+      parentNavigatorKey: _rootNavigatorKey,
+      path: '/quick-actions',
+      builder: (context, state) => const QuickActionsScreen(),
+    ),
+
     // Tools sub-routes
     GoRoute(
       parentNavigatorKey: _rootNavigatorKey,
@@ -185,6 +206,16 @@ final GoRouter appRouter = GoRouter(
       parentNavigatorKey: _rootNavigatorKey,
       path: '/tools/device-info',
       builder: (context, state) => const DeviceInfoScreen(),
+    ),
+    GoRoute(
+      parentNavigatorKey: _rootNavigatorKey,
+      path: '/tools/battery-diagnostics',
+      builder: (context, state) => const BatteryDiagnosticsScreen(),
+    ),
+    GoRoute(
+      parentNavigatorKey: _rootNavigatorKey,
+      path: '/tools/storage-analyzer',
+      builder: (context, state) => const StorageAnalyzerScreen(),
     ),
     GoRoute(
       parentNavigatorKey: _rootNavigatorKey,

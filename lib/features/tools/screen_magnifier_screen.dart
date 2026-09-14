@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../../core/services/native_bridge.dart';
 import '../../core/theme/app_colors.dart';
@@ -14,26 +15,52 @@ class ScreenMagnifierScreen extends StatefulWidget {
 }
 
 class _ScreenMagnifierScreenState extends State<ScreenMagnifierScreen> {
-  double _zoomLevel = 2.0;
+  double _zoomLevel = 1.5;
   bool _isTorchOn = false;
   bool _isFrozen = false;
-  int _contrastMode = 0; // 0: Normal, 1: High Contrast, 2: Inverted
+  int _contrastMode = 0; // 0: Normal, 1: High Contrast Yellow on Black, 2: Inverted Mono, 3: Grayscale
+  MobileScannerController? _cameraController;
+
+  static const List<String> _contrastNames = [
+    'Normal True Color',
+    'High Contrast (Yellow / Black)',
+    'Inverted Monochrome',
+    'High Contrast Grayscale',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _cameraController = MobileScannerController(
+      detectionSpeed: DetectionSpeed.noDuplicates,
+      facing: CameraFacing.back,
+      torchEnabled: false,
+    );
+  }
 
   @override
   void dispose() {
+    _cameraController?.dispose();
     if (_isTorchOn) {
-      NativeBridge.instance.toggleFlashlight();
+      NativeBridge.instance.setTorch(false);
     }
     super.dispose();
   }
 
   Future<void> _toggleTorch() async {
     HapticFeedback.lightImpact();
-    final ok = await NativeBridge.instance.toggleFlashlight();
-    if (mounted && ok) {
+    if (_cameraController != null) {
+      await _cameraController!.toggleTorch();
       setState(() => _isTorchOn = !_isTorchOn);
+    } else {
+      final ok = await NativeBridge.instance.toggleFlashlight();
+      if (mounted && ok) {
+        setState(() => _isTorchOn = !_isTorchOn);
+      }
+    }
+    if (mounted) {
       context.showSnackBar(
-        _isTorchOn ? 'Torch illuminated' : 'Torch turned off',
+        _isTorchOn ? 'Magnifier torch illuminated' : 'Torch turned off',
       );
     }
   }
@@ -41,18 +68,101 @@ class _ScreenMagnifierScreenState extends State<ScreenMagnifierScreen> {
   void _cycleContrast() {
     HapticFeedback.lightImpact();
     setState(() {
-      _contrastMode = (_contrastMode + 1) % 3;
+      _contrastMode = (_contrastMode + 1) % _contrastNames.length;
     });
-    final modeNames = ['Normal View', 'High Contrast', 'Inverted Mono'];
-    context.showSnackBar('Filter: ${modeNames[_contrastMode]}');
+    context.showSnackBar('Filter: ${_contrastNames[_contrastMode]}');
   }
 
   void _toggleFreeze() {
     HapticFeedback.mediumImpact();
     setState(() => _isFrozen = !_isFrozen);
+    if (_isFrozen) {
+      _cameraController?.stop();
+    } else {
+      _cameraController?.start();
+    }
     context.showSnackBar(
-      _isFrozen ? 'Frame frozen for reading' : 'Live magnifier resumed',
+      _isFrozen ? 'Frame frozen for reading' : 'Live optical preview resumed',
     );
+  }
+
+  ColorFilter? _getColorFilter() {
+    switch (_contrastMode) {
+      case 1:
+        // Yellow on dark high contrast
+        return const ColorFilter.matrix(<double>[
+          0.8,
+          0.8,
+          0.0,
+          0,
+          0,
+          0.8,
+          0.8,
+          0.0,
+          0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+        ]);
+      case 2:
+        // Inverted
+        return const ColorFilter.matrix(<double>[
+          -1,
+          0,
+          0,
+          0,
+          255,
+          0,
+          -1,
+          0,
+          0,
+          255,
+          0,
+          0,
+          -1,
+          0,
+          255,
+          0,
+          0,
+          0,
+          1,
+          0,
+        ]);
+      case 3:
+        // Grayscale
+        return const ColorFilter.matrix(<double>[
+          0.2126,
+          0.7152,
+          0.0722,
+          0,
+          0,
+          0.2126,
+          0.7152,
+          0.0722,
+          0,
+          0,
+          0.2126,
+          0.7152,
+          0.0722,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+        ]);
+      default:
+        return null;
+    }
   }
 
   @override
@@ -96,13 +206,7 @@ class _ScreenMagnifierScreenState extends State<ScreenMagnifierScreen> {
               child: Container(
                 margin: const EdgeInsets.all(AppSpacing.base),
                 decoration: BoxDecoration(
-                  color: _contrastMode == 2
-                      ? Colors.white
-                      : (_contrastMode == 1
-                            ? Colors.black
-                            : (isDark
-                                  ? AppColors.darkSurface
-                                  : const Color(0xFFF1F5F9))),
+                  color: Colors.black,
                   borderRadius: AppSpacing.borderRadiusLg,
                   border: Border.all(
                     color: _isFrozen ? AppColors.warning : AppColors.primary,
@@ -110,8 +214,8 @@ class _ScreenMagnifierScreenState extends State<ScreenMagnifierScreen> {
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.08),
-                      blurRadius: 12,
+                      color: Colors.black.withOpacity(0.12),
+                      blurRadius: 16,
                       offset: const Offset(0, 4),
                     ),
                   ],
@@ -121,48 +225,38 @@ class _ScreenMagnifierScreenState extends State<ScreenMagnifierScreen> {
                   child: Stack(
                     alignment: Alignment.center,
                     children: [
-                      // Viewfinder Grid & Target
+                      // Camera live feed with zoom and color filter
+                      if (_cameraController != null)
+                        Positioned.fill(
+                          child: ColorFiltered(
+                            colorFilter:
+                                _getColorFilter() ??
+                                const ColorFilter.mode(
+                                  Colors.transparent,
+                                  BlendMode.multiply,
+                                ),
+                            child: Transform.scale(
+                              scale: _zoomLevel,
+                              child: MobileScanner(
+                                controller: _cameraController!,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error) {
+                                  return _buildDigitalMagnifierFallback(isDark);
+                                },
+                              ),
+                            ),
+                          ),
+                        )
+                      else
+                        _buildDigitalMagnifierFallback(isDark),
+
+                      // Viewfinder Crosshairs & Frame Overlay
                       Positioned.fill(
                         child: CustomPaint(
                           painter: _MagnifierGridPainter(
                             isDark: isDark,
                             contrastMode: _contrastMode,
                           ),
-                        ),
-                      ),
-
-                      // Center Magnified Target Simulation
-                      Transform.scale(
-                        scale: _zoomLevel,
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.zoom_in_rounded,
-                              size: 56,
-                              color: _contrastMode == 2
-                                  ? Colors.black87
-                                  : (_contrastMode == 1
-                                        ? Colors.yellowAccent
-                                        : AppColors.primary.withOpacity(0.7)),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'MAGNIFIED TARGET',
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 1.5,
-                                color: _contrastMode == 2
-                                    ? Colors.black
-                                    : (_contrastMode == 1
-                                          ? Colors.yellowAccent
-                                          : (isDark
-                                                ? Colors.white70
-                                                : Colors.black54)),
-                              ),
-                            ),
-                          ],
                         ),
                       ),
 
@@ -242,11 +336,21 @@ class _ScreenMagnifierScreenState extends State<ScreenMagnifierScreen> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(
-                            'Optical Zoom',
-                            style: context.textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.zoom_in_rounded,
+                                size: 18,
+                                color: AppColors.primary,
+                              ),
+                              const SizedBox(width: AppSpacing.xs),
+                              Text(
+                                'Optical Zoom',
+                                style: context.textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
                           ),
                           Text(
                             '${_zoomLevel.toStringAsFixed(1)}×',
@@ -264,14 +368,15 @@ class _ScreenMagnifierScreenState extends State<ScreenMagnifierScreen> {
                             child: Slider(
                               value: _zoomLevel,
                               min: 1.0,
-                              max: 8.0,
-                              divisions: 28,
+                              max: 5.0,
+                              divisions: 20,
+                              label: '${_zoomLevel.toStringAsFixed(1)}×',
                               onChanged: (val) {
                                 setState(() => _zoomLevel = val);
                               },
                             ),
                           ),
-                          const Text('8.0×', style: TextStyle(fontSize: 12)),
+                          const Text('5.0×', style: TextStyle(fontSize: 12)),
                         ],
                       ),
                     ],
@@ -279,9 +384,9 @@ class _ScreenMagnifierScreenState extends State<ScreenMagnifierScreen> {
                 ),
               ),
             ),
-            const SizedBox(height: AppSpacing.sm),
+            const SizedBox(height: AppSpacing.xs),
 
-            // 3. Android System Magnifier Integration Card
+            // 3. Android System Magnifier Deep Link Shortcut
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: AppSpacing.base),
               child: Card(
@@ -314,9 +419,12 @@ class _ScreenMagnifierScreenState extends State<ScreenMagnifierScreen> {
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              'Magnify any app or screen with Android accessibility shortcut.',
+                              'Enable OS triple-tap screen magnifier in Android Accessibility settings.',
                               style: context.textTheme.bodySmall?.copyWith(
                                 fontSize: 11,
+                                color: context.isDarkMode
+                                    ? AppColors.darkSecondaryText
+                                    : AppColors.secondaryText,
                               ),
                             ),
                           ],
@@ -347,6 +455,51 @@ class _ScreenMagnifierScreenState extends State<ScreenMagnifierScreen> {
       ),
     );
   }
+
+  Widget _buildDigitalMagnifierFallback(bool isDark) {
+    return Container(
+      color: _contrastMode == 1
+          ? Colors.black
+          : (isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9)),
+      child: Center(
+        child: Transform.scale(
+          scale: _zoomLevel,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.search_rounded,
+                size: 56,
+                color: _contrastMode == 1
+                    ? Colors.yellowAccent
+                    : AppColors.primary,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'TAPLY READING MAGNIFIER',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.5,
+                  color: _contrastMode == 1
+                      ? Colors.yellowAccent
+                      : (isDark ? Colors.white70 : Colors.black87),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Hold camera over fine text to enlarge',
+                style: TextStyle(
+                  fontSize: 8,
+                  color: _contrastMode == 1 ? Colors.yellow : Colors.grey,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _MagnifierGridPainter extends CustomPainter {
@@ -358,14 +511,12 @@ class _MagnifierGridPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final linePaint = Paint()
-      ..color = contrastMode == 2
-          ? Colors.black12
-          : (contrastMode == 1
-                ? Colors.white12
-                : (isDark ? Colors.white10 : Colors.black12))
+      ..color = contrastMode == 1
+          ? Colors.yellowAccent.withOpacity(0.2)
+          : Colors.white24
       ..strokeWidth = 1;
 
-    // Draw alignment crosshairs
+    // Crosshairs
     canvas.drawLine(
       Offset(size.width / 2, 0),
       Offset(size.width / 2, size.height),
@@ -377,10 +528,10 @@ class _MagnifierGridPainter extends CustomPainter {
       linePaint,
     );
 
-    // Corner guides
+    // Corner targeting guides
     final cornerPaint = Paint()
       ..color = contrastMode == 1 ? Colors.yellowAccent : AppColors.primary
-      ..strokeWidth = 2
+      ..strokeWidth = 2.5
       ..style = PaintingStyle.stroke;
 
     const cornerSize = 24.0;

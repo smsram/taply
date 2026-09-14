@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/services/native_bridge.dart';
@@ -12,21 +14,89 @@ class FlashlightScreen extends StatefulWidget {
   State<FlashlightScreen> createState() => _FlashlightScreenState();
 }
 
-class _FlashlightScreenState extends State<FlashlightScreen> {
+class _FlashlightScreenState extends State<FlashlightScreen>
+    with WidgetsBindingObserver {
   bool _isOn = false;
   bool _isScreenLight = false;
   double _strobeFrequency = 0.0;
+  Timer? _strobeTimer;
+  bool _strobePulse = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _checkInitialState();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _stopStrobe();
+    // Safely turn off torch on screen exit if it was active
+    NativeBridge.instance.setTorch(false);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
+      if (_strobeTimer != null) {
+        _stopStrobe();
+        setState(() => _strobeFrequency = 0.0);
+      }
+      NativeBridge.instance.setTorch(false);
+      setState(() => _isOn = false);
+    }
   }
 
   Future<void> _checkInitialState() async {
     final torch = await NativeBridge.instance.isFlashlightOn();
     if (mounted) {
       setState(() => _isOn = torch);
+    }
+  }
+
+  void _stopStrobe() {
+    _strobeTimer?.cancel();
+    _strobeTimer = null;
+    _strobePulse = false;
+  }
+
+  void _updateStrobe(double frequency) {
+    setState(() => _strobeFrequency = frequency);
+    _stopStrobe();
+
+    if (frequency <= 0.0) {
+      NativeBridge.instance.setTorch(_isOn);
+      return;
+    }
+
+    // Interval in milliseconds for half-cycle (on/off)
+    final intervalMs = (1000.0 / (frequency * 2)).round().clamp(50, 1000);
+    _strobeTimer = Timer.periodic(Duration(milliseconds: intervalMs), (timer) {
+      _strobePulse = !_strobePulse;
+      NativeBridge.instance.setTorch(_strobePulse);
+      if (mounted) {
+        setState(() => _isOn = _strobePulse);
+      }
+    });
+  }
+
+  Future<void> _toggleTorch() async {
+    if (_strobeFrequency > 0) {
+      _stopStrobe();
+      setState(() => _strobeFrequency = 0.0);
+    }
+    final nextState = !_isOn;
+    final ok = await NativeBridge.instance.setTorch(nextState);
+    if (!mounted) return;
+    if (ok) {
+      setState(() => _isOn = nextState);
+      context.showSnackBar(
+        _isOn ? 'Flashlight enabled' : 'Flashlight turned off',
+      );
     }
   }
 
@@ -58,15 +128,7 @@ class _FlashlightScreenState extends State<FlashlightScreen> {
               const Spacer(),
               // Big Flashlight Toggle Button
               GestureDetector(
-                onTap: () async {
-                  await NativeBridge.instance.toggleFlashlight();
-                  setState(() => _isOn = !_isOn);
-                  if (context.mounted) {
-                    context.showSnackBar(
-                      _isOn ? 'Flashlight enabled' : 'Flashlight turned off',
-                    );
-                  }
-                },
+                onTap: _toggleTorch,
                 child: Container(
                   width: 140,
                   height: 140,
@@ -104,7 +166,9 @@ class _FlashlightScreenState extends State<FlashlightScreen> {
               ),
               const SizedBox(height: AppSpacing.lg),
               Text(
-                _isOn ? 'TORCH ON' : 'TORCH OFF',
+                _strobeFrequency > 0
+                    ? 'STROBE ACTIVE (${_strobeFrequency.toInt()} Hz)'
+                    : (_isOn ? 'TORCH ON' : 'TORCH OFF'),
                 style: context.textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w700,
                   letterSpacing: 1.2,
@@ -122,13 +186,32 @@ class _FlashlightScreenState extends State<FlashlightScreen> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(
-                            'Strobe Frequency',
-                            style: context.textTheme.bodyMedium,
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.flash_on_rounded,
+                                size: 18,
+                                color: AppColors.accent,
+                              ),
+                              const SizedBox(width: AppSpacing.xs),
+                              Text(
+                                'Hardware Strobe Blinking',
+                                style: context.textTheme.bodyMedium?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
                           ),
                           Text(
-                            '${_strobeFrequency.toInt()} Hz',
-                            style: context.textTheme.labelMedium,
+                            _strobeFrequency > 0
+                                ? '${_strobeFrequency.toInt()} Hz'
+                                : 'Off',
+                            style: context.textTheme.labelMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: _strobeFrequency > 0
+                                  ? AppColors.accent
+                                  : null,
+                            ),
                           ),
                         ],
                       ),
@@ -137,13 +220,18 @@ class _FlashlightScreenState extends State<FlashlightScreen> {
                         min: 0,
                         max: 10,
                         divisions: 10,
-                        onChanged: (val) =>
-                            setState(() => _strobeFrequency = val),
+                        label: _strobeFrequency > 0
+                            ? '${_strobeFrequency.toInt()} Hz'
+                            : 'Off',
+                        onChanged: _updateStrobe,
                       ),
                       const Divider(),
                       ListTile(
                         leading: const Icon(Icons.wb_sunny_outlined),
                         title: const Text('Use Screen as White Lantern'),
+                        subtitle: const Text(
+                          'Maximum brightness white display',
+                        ),
                         trailing: const Icon(
                           Icons.arrow_forward_rounded,
                           size: 18,

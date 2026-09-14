@@ -21,7 +21,8 @@ class QuickControlsScreen extends ConsumerStatefulWidget {
       _QuickControlsScreenState();
 }
 
-class _QuickControlsScreenState extends ConsumerState<QuickControlsScreen> {
+class _QuickControlsScreenState extends ConsumerState<QuickControlsScreen>
+    with WidgetsBindingObserver {
   // Volume state
   double _mediaVolume = 0.7;
   double _ringVolume = 0.8;
@@ -35,11 +36,27 @@ class _QuickControlsScreenState extends ConsumerState<QuickControlsScreen> {
   // Flashlight & Connectivity states
   bool _isTorchOn = false;
   bool _isPlayingMedia = false;
+  bool _hasMediaSession = false;
+  Map<String, dynamic> _connectivity = {};
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _fetchLiveDeviceState();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _fetchLiveDeviceState();
+    }
   }
 
   Future<void> _fetchLiveDeviceState() async {
@@ -47,6 +64,7 @@ class _QuickControlsScreenState extends ConsumerState<QuickControlsScreen> {
     final bri = await NativeBridge.instance.getBrightness();
     final torch = await NativeBridge.instance.isFlashlightOn();
     final media = await NativeBridge.instance.getMediaStatus();
+    final conn = await NativeBridge.instance.getConnectivityStatus();
 
     if (mounted) {
       setState(() {
@@ -57,6 +75,9 @@ class _QuickControlsScreenState extends ConsumerState<QuickControlsScreen> {
         _brightness = bri.clamp(0.05, 1.0);
         _isTorchOn = torch;
         _isPlayingMedia = media['isPlaying'] as bool? ?? false;
+        _hasMediaSession =
+            (media['hasActiveSession'] as bool? ?? false) || _isPlayingMedia;
+        _connectivity = conn;
       });
     }
   }
@@ -269,7 +290,7 @@ class _QuickControlsScreenState extends ConsumerState<QuickControlsScreen> {
                 title: 'Screen Brightness',
                 leadingIcon: Icons.brightness_6_rounded,
                 value: _brightness,
-                min: 0.05,
+                min: 0.0,
                 max: 1.0,
                 valueFormatter: (val) => '${(val * 100).toInt()}%',
                 onChanged: _updateBrightness,
@@ -297,81 +318,81 @@ class _QuickControlsScreenState extends ConsumerState<QuickControlsScreen> {
               ),
             ],
           ),
-          const SizedBox(height: AppSpacing.lg),
-
-          // 4. MEDIA CONTROLS
-          AppSection(
-            title: 'Media Playback',
-            subtitle: 'Audio and video media key dispatching',
-            isCard: true,
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.base,
-                  vertical: AppSpacing.md,
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    IconButton.filledTonal(
-                      icon: const Icon(Icons.skip_previous_rounded),
-                      tooltip: 'Previous Track',
-                      iconSize: 28,
-                      onPressed: () {
-                        _triggerHaptic();
-                        NativeBridge.instance.dispatchMediaKey('previous');
-                        context.showSnackBar('Previous track');
-                      },
-                    ),
-                    IconButton.filled(
-                      icon: Icon(
-                        _isPlayingMedia
-                            ? Icons.pause_rounded
-                            : Icons.play_arrow_rounded,
+          // 4. MEDIA CONTROLS (Only shown when active media session or playing)
+          if (_hasMediaSession) ...[
+            AppSection(
+              title: 'Media Playback',
+              subtitle: 'Audio and video media key dispatching',
+              isCard: true,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.base,
+                    vertical: AppSpacing.md,
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      IconButton.filledTonal(
+                        icon: const Icon(Icons.skip_previous_rounded),
+                        tooltip: 'Previous Track',
+                        iconSize: 28,
+                        onPressed: () {
+                          _triggerHaptic();
+                          NativeBridge.instance.dispatchMediaKey('previous');
+                          context.showSnackBar('Previous track');
+                        },
                       ),
-                      tooltip: _isPlayingMedia ? 'Pause' : 'Play',
-                      iconSize: 36,
-                      onPressed: () {
-                        _triggerHaptic();
-                        setState(() => _isPlayingMedia = !_isPlayingMedia);
-                        NativeBridge.instance.dispatchMediaKey('play_pause');
-                        context.showSnackBar(
-                          _isPlayingMedia ? 'Media playing' : 'Media paused',
-                        );
-                      },
-                    ),
-                    IconButton.filledTonal(
-                      icon: const Icon(Icons.skip_next_rounded),
-                      tooltip: 'Next Track',
-                      iconSize: 28,
-                      onPressed: () {
-                        _triggerHaptic();
-                        NativeBridge.instance.dispatchMediaKey('next');
-                        context.showSnackBar('Next track');
-                      },
-                    ),
-                    IconButton.outlined(
-                      icon: const Icon(Icons.stop_rounded),
-                      tooltip: 'Stop',
-                      iconSize: 24,
-                      onPressed: () {
-                        _triggerHaptic();
-                        setState(() => _isPlayingMedia = false);
-                        NativeBridge.instance.dispatchMediaKey('stop');
-                        context.showSnackBar('Media stopped');
-                      },
-                    ),
-                  ],
+                      IconButton.filled(
+                        icon: Icon(
+                          _isPlayingMedia
+                              ? Icons.pause_rounded
+                              : Icons.play_arrow_rounded,
+                        ),
+                        tooltip: _isPlayingMedia ? 'Pause' : 'Play',
+                        iconSize: 36,
+                        onPressed: () {
+                          _triggerHaptic();
+                          setState(() => _isPlayingMedia = !_isPlayingMedia);
+                          NativeBridge.instance.dispatchMediaKey('play_pause');
+                          context.showSnackBar(
+                            _isPlayingMedia ? 'Media playing' : 'Media paused',
+                          );
+                        },
+                      ),
+                      IconButton.filledTonal(
+                        icon: const Icon(Icons.skip_next_rounded),
+                        tooltip: 'Next Track',
+                        iconSize: 28,
+                        onPressed: () {
+                          _triggerHaptic();
+                          NativeBridge.instance.dispatchMediaKey('next');
+                          context.showSnackBar('Next track');
+                        },
+                      ),
+                      IconButton.outlined(
+                        icon: const Icon(Icons.stop_rounded),
+                        tooltip: 'Stop',
+                        iconSize: 24,
+                        onPressed: () {
+                          _triggerHaptic();
+                          setState(() => _isPlayingMedia = false);
+                          NativeBridge.instance.dispatchMediaKey('stop');
+                          context.showSnackBar('Media stopped');
+                        },
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.lg),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.lg),
+          ],
 
-          // 5. CONNECTIVITY SHORTCUTS
+          // 5. CONNECTIVITY & SHORTCUTS
           AppSection(
-            title: 'Connectivity Shortcuts',
-            subtitle: 'Direct shortcuts to system connectivity panels',
+            title: 'Connectivity',
+            subtitle: 'Live state indicators & system settings shortcuts',
             children: [
               GridView.count(
                 shrinkWrap: true,
@@ -385,46 +406,63 @@ class _QuickControlsScreenState extends ConsumerState<QuickControlsScreen> {
                     'Wi-Fi',
                     Icons.wifi_rounded,
                     SystemActionType.wifi,
+                    isActive:
+                        _connectivity['wifi'] == true ||
+                        _connectivity['wifiEnabled'] == true,
                   ),
                   _buildConnectivityTile(
                     'Bluetooth',
                     Icons.bluetooth_rounded,
                     SystemActionType.bluetooth,
-                  ),
-                  _buildConnectivityTile(
-                    'Mobile Data',
-                    Icons.network_cell_rounded,
-                    SystemActionType.mobileData,
-                  ),
-                  _buildConnectivityTile(
-                    'Hotspot',
-                    Icons.wifi_tethering_rounded,
-                    SystemActionType.hotspot,
+                    isActive:
+                        _connectivity['bluetooth'] == true ||
+                        _connectivity['bluetoothEnabled'] == true,
                   ),
                   _buildConnectivityTile(
                     'Airplane Mode',
                     Icons.airplanemode_active_rounded,
                     SystemActionType.airplaneMode,
+                    isActive: _connectivity['airplaneMode'] == true,
                   ),
                   _buildConnectivityTile(
                     'Location',
                     Icons.location_on_rounded,
                     SystemActionType.location,
+                    isActive:
+                        _connectivity['location'] == true ||
+                        _connectivity['locationEnabled'] == true,
                   ),
                   _buildConnectivityTile(
                     'NFC',
                     Icons.nfc_rounded,
                     SystemActionType.nfc,
+                    isActive:
+                        _connectivity['nfc'] == true ||
+                        _connectivity['nfcEnabled'] == true,
+                  ),
+                  _buildConnectivityTile(
+                    'Mobile Data',
+                    Icons.network_cell_rounded,
+                    SystemActionType.mobileData,
+                    isShortcut: true,
+                  ),
+                  _buildConnectivityTile(
+                    'Hotspot',
+                    Icons.wifi_tethering_rounded,
+                    SystemActionType.hotspot,
+                    isShortcut: true,
                   ),
                   _buildConnectivityTile(
                     'Cast',
                     Icons.cast_rounded,
                     SystemActionType.cast,
+                    isShortcut: true,
                   ),
                   _buildConnectivityTile(
                     'VPN',
                     Icons.vpn_key_rounded,
                     SystemActionType.vpn,
+                    isShortcut: true,
                   ),
                 ],
               ),
@@ -464,12 +502,15 @@ class _QuickControlsScreenState extends ConsumerState<QuickControlsScreen> {
   Widget _buildConnectivityTile(
     String name,
     IconData icon,
-    SystemActionType actionType,
-  ) {
+    SystemActionType actionType, {
+    bool isActive = false,
+    bool isShortcut = false,
+  }) {
     return ActionTile(
       title: name,
       icon: icon,
-      isActive: false,
+      isActive: isActive,
+      isShortcut: isShortcut,
       onTap: () {
         _triggerAction(actionType, 'Opening $name settings');
       },

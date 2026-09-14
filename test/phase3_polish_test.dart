@@ -21,33 +21,48 @@ void main() {
       expect(find.byType(TaplyBrandLogo), findsOneWidget);
     });
 
-    testWidgets('FloatingPanelScreen renders 4 priority sections', (
-      WidgetTester tester,
-    ) async {
-      await tester.pumpWidget(
-        const ProviderScope(child: MaterialApp(home: FloatingPanelScreen())),
-      );
-      await tester.pumpAndSettle();
+    testWidgets(
+      'FloatingPanelScreen renders carousel tabs and priority sections',
+      (WidgetTester tester) async {
+        await tester.pumpWidget(
+          const ProviderScope(child: MaterialApp(home: FloatingPanelScreen())),
+        );
+        await tester.pumpAndSettle();
 
-      // Header
-      expect(find.text('Taply Assistant'), findsOneWidget);
+        // Header
+        expect(find.text('Taply Assistant'), findsOneWidget);
 
-      // Priority 1: System Actions
-      expect(find.text('Back'), findsOneWidget);
-      expect(find.text('Home'), findsOneWidget);
-      expect(find.text('Recents'), findsOneWidget);
-      expect(find.text('Screenshot'), findsOneWidget);
-      expect(find.text('Lock Screen'), findsOneWidget);
+        // Carousel Tab Navigation
+        // Carousel Tab Navigation (exactly 4 pages: Actions, Apps, Tools, Controls)
+        expect(find.text('Actions'), findsOneWidget);
+        expect(find.text('Apps'), findsOneWidget);
+        expect(find.text('Tools'), findsOneWidget);
+        expect(find.text('Controls'), findsOneWidget);
+        expect(find.text('More'), findsNothing);
 
-      // Priority 3: App Drawer Trigger
-      expect(find.text('All Applications'), findsOneWidget);
+        // Priority 1: System Actions (on default Actions tab)
+        expect(find.text('Back'), findsOneWidget);
+        expect(find.text('Home'), findsOneWidget);
+        expect(find.text('Recents'), findsOneWidget);
+        expect(find.text('Screenshot'), findsOneWidget);
+        expect(find.text('Lock Screen'), findsOneWidget);
 
-      // Priority 4: More Actions
-      expect(find.text('Tools'), findsOneWidget);
-      expect(find.text('Controls'), findsOneWidget);
-      expect(find.text('Customize'), findsOneWidget);
-      expect(find.text('Settings'), findsOneWidget);
-    });
+        // Navigate to Apps tab
+        await tester.tap(find.text('Apps'));
+        await tester.pumpAndSettle();
+        expect(find.text('All Applications'), findsOneWidget);
+
+        // Header contains Settings shortcut button
+        expect(find.byIcon(Icons.settings_rounded), findsOneWidget);
+
+        // Navigate to Tools tab
+        await tester.tap(find.text('Tools'));
+        await tester.pumpAndSettle();
+        expect(find.text('Calculator'), findsOneWidget);
+        expect(find.text('Timer'), findsOneWidget);
+        expect(find.text('Stopwatch'), findsOneWidget);
+      },
+    );
 
     testWidgets('AppDrawerScreen renders mini-launcher and A-Z scrubber', (
       WidgetTester tester,

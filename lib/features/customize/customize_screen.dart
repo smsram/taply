@@ -117,6 +117,73 @@ class _CustomizeScreenState extends ConsumerState<CustomizeScreen> {
                 },
               ),
               const Divider(),
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.base,
+                  vertical: AppSpacing.sm,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Inactivity Auto-Dim',
+                          style: context.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        Text(
+                          'Fade button when not touched',
+                          style: context.textTheme.bodySmall?.copyWith(
+                            fontSize: 11,
+                            color: context.isDarkMode
+                                ? AppColors.darkSecondaryText
+                                : AppColors.secondaryText,
+                          ),
+                        ),
+                      ],
+                    ),
+                    DropdownButton<int>(
+                      value:
+                          [
+                            0,
+                            3,
+                            5,
+                            10,
+                            20,
+                            30,
+                          ].contains(buttonConfig.idleTimeoutSeconds)
+                          ? buttonConfig.idleTimeoutSeconds
+                          : 10,
+                      underline: const SizedBox.shrink(),
+                      borderRadius: AppSpacing.borderRadiusMd,
+                      items: const [
+                        DropdownMenuItem(value: 0, child: Text('Never')),
+                        DropdownMenuItem(value: 3, child: Text('After 3s')),
+                        DropdownMenuItem(value: 5, child: Text('After 5s')),
+                        DropdownMenuItem(value: 10, child: Text('After 10s')),
+                        DropdownMenuItem(value: 20, child: Text('After 20s')),
+                        DropdownMenuItem(value: 30, child: Text('After 30s')),
+                      ],
+                      onChanged: (val) {
+                        if (val != null) {
+                          ref
+                              .read(settingsProvider.notifier)
+                              .updateButtonConfig(
+                                buttonConfig.copyWith(
+                                  idleTimeoutSeconds: val,
+                                  autoHideIdle: val > 0,
+                                ),
+                              );
+                        }
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(),
               ToggleRow(
                 title: 'Edge Snapping',
                 subtitle:
@@ -148,17 +215,82 @@ class _CustomizeScreenState extends ConsumerState<CustomizeScreen> {
           ),
           const SizedBox(height: AppSpacing.lg),
 
-          // 2. ICON STYLE
+          // 2. BRAND COLOR PALETTE
+          AppSection(
+            title: 'Accent Color',
+            subtitle: 'Choose from 7 curated Taply brand color schemes',
+            isCard: true,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.base,
+                  vertical: AppSpacing.md,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: FloatingButtonConfig.supportedColors.map((color) {
+                    final isSelected =
+                        buttonConfig.customColor.value == color.value;
+                    return GestureDetector(
+                      onTap: () {
+                        ref
+                            .read(settingsProvider.notifier)
+                            .updateButtonConfig(
+                              buttonConfig.copyWith(customColor: color),
+                            );
+                      },
+                      child: Container(
+                        width: 38,
+                        height: 38,
+                        decoration: BoxDecoration(
+                          color: color,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: isSelected
+                                ? (context.isDarkMode
+                                      ? Colors.white
+                                      : Colors.black87)
+                                : Colors.transparent,
+                            width: 3,
+                          ),
+                          boxShadow: [
+                            if (isSelected)
+                              BoxShadow(
+                                color: color.withOpacity(0.5),
+                                blurRadius: 10,
+                                spreadRadius: 2,
+                              ),
+                          ],
+                        ),
+                        child: isSelected
+                            ? const Icon(
+                                Icons.check,
+                                color: Colors.white,
+                                size: 20,
+                              )
+                            : null,
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.lg),
+
+          // 3. ICON STYLE
           AppSection(
             title: 'Icon & Graphic Style',
             subtitle: 'Visual identity of the floating badge',
             children: [
-              Row(
-                children: ButtonIconStyle.values.map((style) {
-                  final isSelected = buttonConfig.iconStyle == style;
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
+                child: Row(
+                  children: ButtonIconStyle.values.map((style) {
+                    final isSelected = buttonConfig.iconStyle == style;
 
-                  return Expanded(
-                    child: GestureDetector(
+                    return GestureDetector(
                       onTap: () {
                         ref
                             .read(settingsProvider.notifier)
@@ -167,20 +299,22 @@ class _CustomizeScreenState extends ConsumerState<CustomizeScreen> {
                             );
                       },
                       child: Container(
+                        width: 96,
                         margin: const EdgeInsets.symmetric(horizontal: 4),
                         padding: const EdgeInsets.symmetric(
                           vertical: AppSpacing.md,
+                          horizontal: AppSpacing.xs,
                         ),
                         decoration: BoxDecoration(
                           color: isSelected
                               ? (context.isDarkMode
-                                    ? AppColors.darkPrimary.withOpacity(0.2)
-                                    : const Color(0xFFEFF6FF))
+                                    ? buttonConfig.customColor.withOpacity(0.2)
+                                    : buttonConfig.customColor.withOpacity(0.1))
                               : context.colorScheme.surface,
                           borderRadius: AppSpacing.borderRadiusMd,
                           border: Border.all(
                             color: isSelected
-                                ? AppColors.primary
+                                ? buttonConfig.customColor
                                 : context.colorScheme.outline,
                             width: isSelected ? 2 : 1,
                           ),
@@ -189,9 +323,9 @@ class _CustomizeScreenState extends ConsumerState<CustomizeScreen> {
                           children: [
                             Icon(
                               style.icon,
-                              size: 26,
+                              size: 28,
                               color: isSelected
-                                  ? AppColors.primary
+                                  ? buttonConfig.customColor
                                   : context.colorScheme.onSurface.withOpacity(
                                       0.6,
                                     ),
@@ -199,20 +333,23 @@ class _CustomizeScreenState extends ConsumerState<CustomizeScreen> {
                             const SizedBox(height: 6),
                             Text(
                               style.displayName,
+                              textAlign: TextAlign.center,
                               style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: isSelected
                                     ? FontWeight.w700
                                     : FontWeight.w500,
-                                color: isSelected ? AppColors.primary : null,
+                                color: isSelected
+                                    ? buttonConfig.customColor
+                                    : null,
                               ),
                             ),
                           ],
                         ),
                       ),
-                    ),
-                  );
-                }).toList(),
+                    );
+                  }).toList(),
+                ),
               ),
             ],
           ),

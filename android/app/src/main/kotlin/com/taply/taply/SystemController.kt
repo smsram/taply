@@ -1,12 +1,17 @@
 package com.taply.taply
 
+import android.bluetooth.BluetoothAdapter
 import android.content.Context
 import android.content.Intent
 import android.hardware.camera2.CameraAccessException
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
+import android.location.LocationManager
 import android.media.AudioManager
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
+import android.nfc.NfcAdapter
 import android.os.Build
 import android.provider.Settings
 import android.util.Log
@@ -116,7 +121,7 @@ class SystemController(private val context: Context) {
             }
             try {
                 context.startActivity(intent)
-            } catch (_: Exception) {
+            } catch (e: Exception) {
                 openSystemSetting("display")
             }
             return false
@@ -177,6 +182,92 @@ class SystemController(private val context: Context) {
 
     fun isFlashlightOn(): Boolean = isTorchOn
 
+    fun setTorch(enabled: Boolean): Boolean {
+        val cm = cameraManager ?: return false
+        val camId = torchCameraId ?: return false
+        return try {
+            isTorchOn = enabled
+            cm.setTorchMode(camId, enabled)
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Error setting torch mode", e)
+            isTorchOn = false
+            false
+        }
+    }
+
+    fun getConnectivityStatus(): Map<String, Any> {
+        val res = mutableMapOf<String, Any>()
+
+        // 1. Wi-Fi
+        try {
+            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            val isWifi = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val net = cm?.activeNetwork
+                val caps = cm?.getNetworkCapabilities(net)
+                caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+            } else {
+                @Suppress("DEPRECATION")
+                val ni = cm?.getNetworkInfo(ConnectivityManager.TYPE_WIFI)
+                ni?.isConnected == true
+            }
+            res["wifi"] = isWifi
+            res["wifiEnabled"] = isWifi
+        } catch (e: Exception) {
+            res["wifi"] = false
+            res["wifiEnabled"] = false
+        }
+
+        // 2. Bluetooth
+        try {
+            @Suppress("DEPRECATION")
+            val bt = BluetoothAdapter.getDefaultAdapter()
+            val isBt = bt?.isEnabled == true
+            res["bluetooth"] = isBt
+            res["bluetoothEnabled"] = isBt
+        } catch (e: Exception) {
+            res["bluetooth"] = false
+            res["bluetoothEnabled"] = false
+        }
+
+        // 3. Airplane Mode
+        try {
+            val airplane = Settings.Global.getInt(context.contentResolver, Settings.Global.AIRPLANE_MODE_ON, 0) != 0
+            res["airplaneMode"] = airplane
+        } catch (e: Exception) {
+            res["airplaneMode"] = false
+        }
+
+        // 4. Location
+        try {
+            val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+            val isLoc = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                lm?.isLocationEnabled == true
+            } else {
+                val mode = Settings.Secure.getInt(context.contentResolver, Settings.Secure.LOCATION_MODE, Settings.Secure.LOCATION_MODE_OFF)
+                mode != Settings.Secure.LOCATION_MODE_OFF
+            }
+            res["location"] = isLoc
+            res["locationEnabled"] = isLoc
+        } catch (e: Exception) {
+            res["location"] = false
+            res["locationEnabled"] = false
+        }
+
+        // 5. NFC
+        try {
+            val nfc = NfcAdapter.getDefaultAdapter(context)
+            val isNfc = nfc?.isEnabled == true
+            res["nfc"] = isNfc
+            res["nfcEnabled"] = isNfc
+        } catch (e: Exception) {
+            res["nfc"] = false
+            res["nfcEnabled"] = false
+        }
+
+        return res
+    }
+
     // ==========================================
     // 4. SYSTEM SETTINGS SHORTCUTS
     // ==========================================
@@ -212,7 +303,7 @@ class SystemController(private val context: Context) {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 })
                 true
-            } catch (_: Exception) {
+            } catch (ex: Exception) {
                 false
             }
         }

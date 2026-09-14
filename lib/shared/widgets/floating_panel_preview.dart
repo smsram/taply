@@ -121,10 +121,11 @@ class FloatingPanelPreview extends StatelessWidget {
 
   Widget _buildLayoutContent(BuildContext context) {
     switch (panelConfig.layoutStyle) {
-      case PanelLayoutStyle.grid3x3:
-        return _build3x3Grid(context);
+      case PanelLayoutStyle.multiPage:
       case PanelLayoutStyle.grid4x2:
         return _build4x2Grid(context);
+      case PanelLayoutStyle.grid3x3:
+        return _build3x3Grid(context);
       case PanelLayoutStyle.compactWheel:
         return _buildWheelLayout(context);
       case PanelLayoutStyle.verticalList:

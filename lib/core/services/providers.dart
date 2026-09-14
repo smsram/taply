@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:package_info_plus/package_info_plus.dart';
+
 import '../../shared/models/app_settings.dart';
 import '../../shared/models/floating_button_config.dart';
 import '../../shared/models/gesture_action.dart';
@@ -17,6 +19,10 @@ import 'storage_service.dart';
 import 'system_action_service.dart';
 
 // Services
+final packageInfoProvider = FutureProvider<PackageInfo>((ref) async {
+  return PackageInfo.fromPlatform();
+});
+
 final storageServiceProvider = Provider<IStorageService>((ref) {
   return SharedPreferencesStorageService();
 });
@@ -83,6 +89,7 @@ class AppSettingsNotifier extends Notifier<AppSettings> {
   void updatePanelConfig(PanelConfig config) {
     state = state.copyWith(panelConfig: config);
     _persist();
+    _syncConfigToNative();
   }
 
   void setDefaultLaunchMode(AppLaunchMode mode) {
@@ -112,9 +119,13 @@ class AppSettingsNotifier extends Notifier<AppSettings> {
   }
 
   void _syncConfigToNative() {
+    final favList =
+        ref.read(storageServiceProvider).getStringList('taply_favorites') ?? [];
     NativeBridge.instance.updateOverlayConfig(
       config: state.buttonConfig,
       gestures: ref.read(gesturesProvider),
+      panelConfig: state.panelConfig,
+      favorites: favList,
     );
   }
 }
@@ -206,9 +217,13 @@ class GesturesNotifier extends Notifier<Map<GestureTrigger, GestureBinding>> {
     }
     storage.setString(_storageKey, jsonEncode(serialized));
 
+    final favList = storage.getStringList('taply_favorites') ?? [];
+    final settings = ref.read(settingsProvider);
     NativeBridge.instance.updateOverlayConfig(
-      config: ref.read(settingsProvider).buttonConfig,
+      config: settings.buttonConfig,
       gestures: state,
+      panelConfig: settings.panelConfig,
+      favorites: favList,
     );
   }
 }
@@ -226,6 +241,16 @@ class AppsNotifier extends AsyncNotifier<List<InstalledApp>> {
     return service.getInstalledApps();
   }
 
+  void _syncFavoritesToNative(List<String> favList) {
+    final settings = ref.read(settingsProvider);
+    NativeBridge.instance.updateOverlayConfig(
+      config: settings.buttonConfig,
+      gestures: ref.read(gesturesProvider),
+      panelConfig: settings.panelConfig,
+      favorites: favList,
+    );
+  }
+
   Future<void> refreshApps() async {
     state = const AsyncLoading();
     final service = ref.read(appServiceProvider);
@@ -236,6 +261,33 @@ class AppsNotifier extends AsyncNotifier<List<InstalledApp>> {
     final service = ref.read(appServiceProvider);
     await service.toggleFavorite(packageName);
     state = AsyncData(await service.getInstalledApps());
+    final apps = await service.getInstalledApps();
+    state = AsyncData(apps);
+    final favList = apps
+        .where((a) => a.isFavorite)
+        .map((a) => a.packageName)
+        .toList();
+    _syncFavoritesToNative(favList);
+  }
+
+  Future<void> setFavorites(List<String> packageNames) async {
+    final service = ref.read(appServiceProvider);
+    await service.setFavorites(packageNames);
+    state = AsyncData(await service.getInstalledApps());
+    _syncFavoritesToNative(packageNames);
+  }
+
+  Future<void> reorderFavorites(int oldIndex, int newIndex) async {
+    final service = ref.read(appServiceProvider);
+    await service.reorderFavorites(oldIndex, newIndex);
+    state = AsyncData(await service.getInstalledApps());
+    final apps = await service.getInstalledApps();
+    state = AsyncData(apps);
+    final favList = apps
+        .where((a) => a.isFavorite)
+        .map((a) => a.packageName)
+        .toList();
+    _syncFavoritesToNative(favList);
   }
 
   Future<void> toggleHidden(String packageName) async {

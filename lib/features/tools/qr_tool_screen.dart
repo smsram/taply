@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../../core/services/native_bridge.dart';
 import '../../core/theme/app_colors.dart';
@@ -16,10 +17,12 @@ class QRToolScreen extends StatefulWidget {
 }
 
 class _QRToolScreenState extends State<QRToolScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   late TabController _tabController;
   late AnimationController _laserAnimController;
   late Animation<double> _laserAnimation;
+  MobileScannerController? _scannerController;
+  bool _isScanning = true;
 
   final TextEditingController _qrTextController = TextEditingController(
     text: 'https://taply.app',
@@ -31,7 +34,14 @@ class _QRToolScreenState extends State<QRToolScreen>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(_handleTabChange);
+    _scannerController = MobileScannerController(
+      detectionSpeed: DetectionSpeed.noDuplicates,
+      facing: CameraFacing.back,
+      torchEnabled: false,
+    );
     _laserAnimController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 2000),
@@ -41,24 +51,55 @@ class _QRToolScreenState extends State<QRToolScreen>
     );
   }
 
+  void _handleTabChange() {
+    if (_tabController.index == 0) {
+      _scannerController?.start();
+    } else {
+      _scannerController?.stop();
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (_scannerController == null) return;
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused) {
+      _scannerController?.stop();
+    } else if (state == AppLifecycleState.resumed &&
+        _tabController.index == 0) {
+      _scannerController?.start();
+    }
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _tabController.removeListener(_handleTabChange);
     _tabController.dispose();
     _laserAnimController.dispose();
     _qrTextController.dispose();
+    _scannerController?.dispose();
     if (_isTorchOn) {
-      NativeBridge.instance.toggleFlashlight();
+      NativeBridge.instance.setTorch(false);
     }
     super.dispose();
   }
 
   Future<void> _toggleTorch() async {
     HapticFeedback.lightImpact();
-    final ok = await NativeBridge.instance.toggleFlashlight();
-    if (mounted && ok) {
+    if (_scannerController != null) {
+      await _scannerController!.toggleTorch();
       setState(() => _isTorchOn = !_isTorchOn);
+    } else {
+      final ok = await NativeBridge.instance.toggleFlashlight();
+      if (mounted && ok) {
+        setState(() => _isTorchOn = !_isTorchOn);
+      }
+    }
+    if (mounted) {
       context.showSnackBar(
-        _isTorchOn ? 'Flashlight illuminated' : 'Flashlight turned off',
+        _isTorchOn ? 'Torch illuminated' : 'Torch turned off',
       );
     }
   }
@@ -163,52 +204,6 @@ class _QRToolScreenState extends State<QRToolScreen>
     );
   }
 
-  void _showGalleryPickerSimulation() {
-    showDialog<void>(
-      context: context,
-      builder: (context) {
-        final sampleQRs = [
-          'https://taply.app/support',
-          'WIFI:T:WPA;S:HomeNetwork;P:SuperSecretPassword;;',
-          'mailto:support@taply.app?subject=Feedback',
-          'tel:+15550199321',
-        ];
-        return SimpleDialog(
-          title: const Text('Select Sample Image to Scan'),
-          children: sampleQRs.map((sample) {
-            return SimpleDialogOption(
-              onPressed: () {
-                Navigator.pop(context);
-                _onScanResult(sample);
-              },
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.image_rounded,
-                      size: 20,
-                      color: AppColors.primary,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        sample,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 13),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          }).toList(),
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -232,7 +227,7 @@ class _QRToolScreenState extends State<QRToolScreen>
   Widget _buildScannerTab(BuildContext context) {
     return Column(
       children: [
-        const SizedBox(height: AppSpacing.lg),
+        const SizedBox(height: AppSpacing.md),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.base),
           child: Text(
@@ -241,86 +236,133 @@ class _QRToolScreenState extends State<QRToolScreen>
             style: context.textTheme.bodyMedium,
           ),
         ),
-        const SizedBox(height: AppSpacing.lg),
         const SizedBox(height: AppSpacing.md),
         Expanded(
           child: Center(
             child: Container(
-              width: 260,
-              height: 260,
+              width: 280,
+              height: 280,
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.85),
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(24),
                 border: Border.all(color: AppColors.primary, width: 2.5),
               ),
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  // Animated Scanning Laser Bar
-                  AnimatedBuilder(
-                    animation: _laserAnimation,
-                    builder: (context, child) {
-                      return Positioned(
-                        top: 260 * _laserAnimation.value,
-                        left: 16,
-                        right: 16,
-                        child: Container(
-                          height: 2.5,
-                          decoration: BoxDecoration(
-                            color: AppColors.primary,
-                            boxShadow: [
-                              BoxShadow(
-                                color: AppColors.primary.withOpacity(0.8),
-                                blurRadius: 8,
-                                spreadRadius: 2,
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-
-                  // Center targeting reticle
-                  const Icon(
-                    Icons.qr_code_scanner_rounded,
-                    size: 80,
-                    color: Colors.white24,
-                  ),
-
-                  // Bottom HUD Status
-                  Positioned(
-                    bottom: 12,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 4,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(21.5),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    if (_scannerController != null)
+                      MobileScanner(
+                        controller: _scannerController!,
+                        onDetect: (capture) {
+                          if (!_isScanning) return;
+                          final List<Barcode> barcodes = capture.barcodes;
+                          for (final barcode in barcodes) {
+                            if (barcode.rawValue != null &&
+                                barcode.rawValue!.isNotEmpty) {
+                              _isScanning = false;
+                              _onScanResult(barcode.rawValue!);
+                              Future.delayed(const Duration(seconds: 2), () {
+                                if (mounted) setState(() => _isScanning = true);
+                              });
+                              break;
+                            }
+                          }
+                        },
+                        errorBuilder: (context, error) {
+                          return Container(
+                            color: Colors.black87,
+                            padding: const EdgeInsets.all(AppSpacing.base),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(
+                                  Icons.no_photography_rounded,
+                                  size: 48,
+                                  color: Colors.white54,
+                                ),
+                                const SizedBox(height: AppSpacing.sm),
+                                Text(
+                                  'Camera Access Required',
+                                  style: context.textTheme.titleSmall?.copyWith(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                const Text(
+                                  'Ensure camera permission is granted in Android settings',
+                                  style: TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 11,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ],
+                            ),
+                          );
+                        },
                       ),
-                      decoration: BoxDecoration(
-                        color: Colors.black54,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.videocam_rounded,
-                            color: Colors.greenAccent,
-                            size: 14,
-                          ),
-                          SizedBox(width: 6),
-                          Text(
-                            'Camera Active',
-                            style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: 11,
+
+                    // Animated Scanning Laser Bar
+                    AnimatedBuilder(
+                      animation: _laserAnimation,
+                      builder: (context, child) {
+                        return Positioned(
+                          top: 280 * _laserAnimation.value,
+                          left: 16,
+                          right: 16,
+                          child: Container(
+                            height: 2.5,
+                            decoration: BoxDecoration(
+                              color: AppColors.primary,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: AppColors.primary.withOpacity(0.8),
+                                  blurRadius: 8,
+                                  spreadRadius: 2,
+                                ),
+                              ],
                             ),
                           ),
-                        ],
+                        );
+                      },
+                    ),
+
+                    // Bottom HUD Status
+                    Positioned(
+                      bottom: 12,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.black54,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.videocam_rounded,
+                              color: Colors.greenAccent,
+                              size: 14,
+                            ),
+                            SizedBox(width: 6),
+                            Text(
+                              'Camera Active',
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -331,9 +373,9 @@ class _QRToolScreenState extends State<QRToolScreen>
             children: [
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: _showGalleryPickerSimulation,
-                  icon: const Icon(Icons.photo_library_rounded),
-                  label: const Text('From Gallery'),
+                  onPressed: () => _scannerController?.switchCamera(),
+                  icon: const Icon(Icons.flip_camera_ios_rounded),
+                  label: const Text('Switch Camera'),
                 ),
               ),
               const SizedBox(width: AppSpacing.md),

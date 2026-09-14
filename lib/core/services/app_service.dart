@@ -9,6 +9,8 @@ abstract class IAppService {
   Future<List<InstalledApp>> getFavoriteApps();
   Future<List<InstalledApp>> getRecentApps();
   Future<void> toggleFavorite(String packageName);
+  Future<void> setFavorites(List<String> packageNames);
+  Future<void> reorderFavorites(int oldIndex, int newIndex);
   Future<void> toggleHidden(String packageName);
   Future<void> updateLaunchMode(String packageName, AppLaunchMode mode);
   Future<void> recordLaunch(String packageName);
@@ -67,7 +69,24 @@ class NativeAppService implements IAppService {
   @override
   Future<List<InstalledApp>> getFavoriteApps() async {
     final apps = await getInstalledApps();
-    return apps.where((a) => a.isFavorite && !a.isHidden).toList();
+    final favList = storage.getStringList('taply_favorites') ?? [];
+    if (favList.isEmpty) {
+      return apps.where((a) => a.isFavorite && !a.isHidden).toList();
+    }
+    final appMap = {for (final a in apps) a.packageName: a};
+    final ordered = <InstalledApp>[];
+    for (final pkg in favList) {
+      final app = appMap[pkg];
+      if (app != null && app.isFavorite && !app.isHidden) {
+        ordered.add(app);
+      }
+    }
+    for (final a in apps) {
+      if (a.isFavorite && !a.isHidden && !favList.contains(a.packageName)) {
+        ordered.add(a);
+      }
+    }
+    return ordered;
   }
 
   @override
@@ -99,6 +118,35 @@ class NativeAppService implements IAppService {
       }
       await storage.setStringList('taply_favorites', favList);
     }
+  }
+
+  @override
+  Future<void> setFavorites(List<String> packageNames) async {
+    final apps = await getInstalledApps();
+    final favSet = packageNames.toSet();
+    for (int i = 0; i < apps.length; i++) {
+      final isFav = favSet.contains(apps[i].packageName);
+      if (apps[i].isFavorite != isFav) {
+        apps[i] = apps[i].copyWith(isFavorite: isFav);
+      }
+    }
+    await storage.setStringList('taply_favorites', packageNames);
+  }
+
+  @override
+  Future<void> reorderFavorites(int oldIndex, int newIndex) async {
+    final favList = List<String>.from(
+      storage.getStringList('taply_favorites') ?? [],
+    );
+    if (oldIndex < 0 ||
+        oldIndex >= favList.length ||
+        newIndex < 0 ||
+        newIndex >= favList.length) {
+      return;
+    }
+    final item = favList.removeAt(oldIndex);
+    favList.insert(newIndex, item);
+    await storage.setStringList('taply_favorites', favList);
   }
 
   @override
@@ -272,6 +320,19 @@ class MockAppService implements IAppService {
       _apps[index] = current.copyWith(isFavorite: !current.isFavorite);
     }
   }
+
+  @override
+  Future<void> setFavorites(List<String> packageNames) async {
+    final set = packageNames.toSet();
+    for (int i = 0; i < _apps.length; i++) {
+      _apps[i] = _apps[i].copyWith(
+        isFavorite: set.contains(_apps[i].packageName),
+      );
+    }
+  }
+
+  @override
+  Future<void> reorderFavorites(int oldIndex, int newIndex) async {}
 
   @override
   Future<void> toggleHidden(String packageName) async {

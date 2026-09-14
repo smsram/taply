@@ -239,15 +239,7 @@ class _FloatingButtonPreviewState extends State<FloatingButtonPreview> {
   }
 
   BoxShape _getShapeForIconStyle(ButtonIconStyle style) {
-    switch (style) {
-      case ButtonIconStyle.square:
-        return BoxShape.rectangle;
-      case ButtonIconStyle.defaultDot:
-      case ButtonIconStyle.minimal:
-      case ButtonIconStyle.circle:
-      case ButtonIconStyle.custom:
-        return BoxShape.circle;
-    }
+    return BoxShape.circle;
   }
 }
 

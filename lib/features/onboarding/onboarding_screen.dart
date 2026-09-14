@@ -10,7 +10,7 @@ import '../../core/theme/app_spacing.dart';
 import '../../core/utils/extensions.dart';
 import '../../shared/widgets/primary_button.dart';
 import '../../shared/widgets/secondary_button.dart';
-import '../../shared/widgets/taply_brand_logo.dart';
+import '../../shared/widgets/taply_brand_icon.dart';
 
 class OnboardingScreen extends ConsumerStatefulWidget {
   const OnboardingScreen({super.key});
@@ -55,6 +55,25 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   }
 
   void _finishOnboarding() {
+    const mapping = {
+      'Screenshot': 'screenshot',
+      'Volume': 'volume',
+      'Brightness': 'brightness',
+      'Home': 'home',
+      'Back': 'back',
+      'Recent Apps': 'recent_apps',
+      'Lock Screen': 'lock_screen',
+      'Flashlight': 'flashlight',
+    };
+    final orderedActions = _selectedEssentials
+        .map((e) => mapping[e] ?? e.toLowerCase())
+        .toList();
+    final settings = ref.read(settingsProvider);
+    ref
+        .read(settingsProvider.notifier)
+        .updatePanelConfig(
+          settings.panelConfig.copyWith(actionOrder: orderedActions),
+        );
     ref.read(settingsProvider.notifier).completeOnboarding();
     context.go('/');
   }
@@ -133,7 +152,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           const Spacer(),
-          const TaplyBrandLogo(size: 88),
+          const TaplyAppIcon(size: 92, borderRadius: 24),
           const SizedBox(height: AppSpacing.xl),
           Text(
             AppConstants.appName,
@@ -176,17 +195,22 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           const Spacer(),
-          Container(
-            width: 72,
-            height: 72,
-            decoration: BoxDecoration(
-              color: AppColors.primary.withOpacity(0.12),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.layers_rounded,
-              color: AppColors.primary,
-              size: 36,
+          Image.asset(
+            'assets/branding/onboarding/display_over_apps.png',
+            height: 140,
+            fit: BoxFit.contain,
+            errorBuilder: (context, error, stackTrace) => Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                color: AppColors.primary.withOpacity(0.12),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.layers_rounded,
+                color: AppColors.primary,
+                size: 36,
+              ),
             ),
           ),
           const SizedBox(height: AppSpacing.lg),
@@ -368,17 +392,22 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           const Spacer(),
-          Container(
-            width: 80,
-            height: 80,
-            decoration: BoxDecoration(
-              color: AppColors.success.withOpacity(0.12),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.check_rounded,
-              color: AppColors.success,
-              size: 40,
+          Image.asset(
+            'assets/branding/onboarding/all_set.png',
+            height: 140,
+            fit: BoxFit.contain,
+            errorBuilder: (context, error, stackTrace) => Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                color: AppColors.success.withOpacity(0.12),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.check_rounded,
+                color: AppColors.success,
+                size: 40,
+              ),
             ),
           ),
           const SizedBox(height: AppSpacing.xl),

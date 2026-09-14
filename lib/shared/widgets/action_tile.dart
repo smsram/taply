@@ -12,6 +12,7 @@ class ActionTile extends StatelessWidget {
   final VoidCallback? onTap;
   final bool isActive;
   final bool isCompact;
+  final bool isShortcut;
 
   const ActionTile({
     super.key,
@@ -22,6 +23,7 @@ class ActionTile extends StatelessWidget {
     this.onTap,
     this.isActive = false,
     this.isCompact = false,
+    this.isShortcut = false,
   });
 
   @override
@@ -34,7 +36,7 @@ class ActionTile extends StatelessWidget {
 
     return Semantics(
       button: true,
-      label: title,
+      label: isShortcut ? '$title (Settings shortcut)' : title,
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -78,16 +80,32 @@ class ActionTile extends StatelessWidget {
                   ),
                 ),
                 SizedBox(height: isCompact ? AppSpacing.xs : AppSpacing.sm),
-                Text(
-                  title,
-                  textAlign: TextAlign.center,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: context.textTheme.labelMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    fontSize: isCompact ? 11 : 12,
-                    color: context.colorScheme.onSurface,
-                  ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        title,
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: context.textTheme.labelMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          fontSize: isCompact ? 11 : 12,
+                          color: context.colorScheme.onSurface,
+                        ),
+                      ),
+                    ),
+                    if (isShortcut) ...[
+                      const SizedBox(width: 3),
+                      Icon(
+                        Icons.open_in_new_rounded,
+                        size: 11,
+                        color: AppColors.secondaryText.withOpacity(0.8),
+                      ),
+                    ],
+                  ],
                 ),
               ],
             ),
